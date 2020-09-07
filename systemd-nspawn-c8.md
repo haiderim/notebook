@@ -64,7 +64,7 @@ Remove `--network-veth` parameter from **/etc/systemd/system/machines.target.wan
 
 `setsebool -P daemons_use_tty 1`
 
-Create SELinux module
+Create SELinux module and load it
 
 `audit2allow -a -M systemd-nspawn`
 
