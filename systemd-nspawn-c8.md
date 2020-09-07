@@ -42,4 +42,5 @@ Start and login
 
 ## To use host machine's network
 Remove `--network-veth` parameter from /etc/systemd/system/machines.target.wants/systemd-nspawn@cent8.service
+
 `systemctl daemon-reload`
