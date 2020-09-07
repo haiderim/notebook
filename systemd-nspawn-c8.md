@@ -45,7 +45,7 @@ Start and login
 ## Use host machine's network
 By default only loopback interface is available in the container
 
-Remove `--network-veth` parameter from /etc/systemd/system/machines.target.wants/systemd-nspawn@cent8.service
+Remove `--network-veth` parameter from **/etc/systemd/system/machines.target.wants/systemd-nspawn@cent8.service**
 
 `systemctl daemon-reload`
 
