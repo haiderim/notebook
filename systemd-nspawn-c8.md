@@ -30,10 +30,17 @@ Now you can boot the container and login
 
 `systemd-nspawn -bD /var/lib/machines/cent8`
 
-Auto-start at boot
+Enable Auto-start at boot
 
 `machinectl enable cent8`
 
-`rm /var/lib/machines/cent8/etc/securetty`
+Start and login
 
 `machinectl start cent8`
+
+`machinectl login cent8`
+
+## To use host machine's network
+Remove --network-veth parameter from /etc/systemd/system/machines.target.wants/systemd-nspawn@cent8.service
+systemctl daemon-reload
+machinectl 
