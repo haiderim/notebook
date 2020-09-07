@@ -53,6 +53,22 @@ Remove `--network-veth` parameter from /etc/systemd/system/machines.target.wants
 
 ## SELinux
 `restorecon -R /var/lib/machines/cent8/`
-setsebool -P domain_can_mmap_files 1
-setsebool -P daemons_use_tty 1
 
+`setsebool -P domain_can_mmap_files 1`
+
+`setsebool -P daemons_use_tty 1`
+
+```#============= setroubleshootd_t ==============
+allow setroubleshootd_t var_lib_t:file { lock open read };
+
+#============= system_dbusd_t ==============
+allow system_dbusd_t devpts_t:chr_file { read write };
+
+#============= systemd_machined_t ==============
+allow systemd_machined_t self:cap_userns { kill setgid setuid sys_admin sys_ptrace };
+allow systemd_machined_t systemd_unit_file_t:service stop;
+allow systemd_machined_t tmpfs_t:lnk_file read;
+allow systemd_machined_t tmpfs_t:sock_file write;
+allow systemd_machined_t unconfined_service_t:dir search;
+allow systemd_machined_t unconfined_service_t:file { getattr open read };
+allow systemd_machined_t unconfined_service_t:lnk_file read;```
