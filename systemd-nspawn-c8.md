@@ -12,6 +12,8 @@ Set SELinux to permissive before beginning
 
 `setenforce 0`
 
+`dnf install systemd-container`
+
 `mkdir /var/lib/machines/cent8 -p`
 
 `dnf -y --nogpgcheck --releasever=8 --installroot /var/lib/machines/cent8 install systemd vim-minimal bash-completion openssl gpg net-tools initscripts bind-utils sudo cronie python38 tar hostname which passwd setup yum dnf`
