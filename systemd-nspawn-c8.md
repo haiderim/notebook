@@ -32,6 +32,8 @@ Now you can boot the container and login
 
 Enable Auto-start at boot
 
+`systemctl enable machines.target`
+
 `machinectl enable cent8`
 
 Start and login
