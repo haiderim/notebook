@@ -10,9 +10,15 @@ Set SELinux to permissive before beginning
 
 `setenforce 0`
 
+On Minimal install, the systemd-nspawn command in unavailable
+
 `dnf install systemd-container`
 
+Create directory where you'll install the container
+
 `mkdir /var/lib/machines/cent8 -p`
+
+Install the container
 
 `dnf -y --nogpgcheck --releasever=8 --installroot /var/lib/machines/cent8 install systemd vim-minimal bash-completion openssl gpg initscripts sudo cronie python38 tar hostname which passwd setup yum dnf iproute`
 
