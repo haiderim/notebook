@@ -47,6 +47,10 @@ Remove `--network-veth` parameter from /etc/systemd/system/machines.target.wants
 
 `systemctl daemon-reload`
 
+`machinectl poweroff cent8`
+
+`machinectl start cent8`
+
 ## SELinux
 `restorecon -R /var/lib/machines/cent8/`
 setsebool -P domain_can_mmap_files 1
