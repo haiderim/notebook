@@ -58,7 +58,8 @@ Remove `--network-veth` parameter from /etc/systemd/system/machines.target.wants
 
 `setsebool -P daemons_use_tty 1`
 
-``` #============= setroubleshootd_t ==============
+``` 
+#============= setroubleshootd_t ==============
 allow setroubleshootd_t var_lib_t:file { lock open read };
 
 #============= system_dbusd_t ==============
@@ -71,4 +72,6 @@ allow systemd_machined_t tmpfs_t:lnk_file read;
 allow systemd_machined_t tmpfs_t:sock_file write;
 allow systemd_machined_t unconfined_service_t:dir search;
 allow systemd_machined_t unconfined_service_t:file { getattr open read };
-allow systemd_machined_t unconfined_service_t:lnk_file read; ```
+allow systemd_machined_t unconfined_service_t:lnk_file read; 
+
+```
