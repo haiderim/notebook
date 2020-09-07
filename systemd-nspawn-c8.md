@@ -2,6 +2,7 @@
 
 ## Introduction
 Spawn a command or OS in a light-weight container
+
 systemd-nspawn may be used to run a command or OS in a light-weight namespace container. In many ways it is similar to chroot(1), but more powerful since it fully virtualizes the file system hierarchy, as well as the process tree, the various IPC subsystems and the host and domain name.
 
 ## Steps
