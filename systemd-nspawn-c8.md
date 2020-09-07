@@ -10,7 +10,7 @@ Set SELinux to permissive before beginning
 
 `setenforce 0`
 
-On Minimal install, the systemd-nspawn command in unavailable
+On Minimal install, the systemd-nspawn command is unavailable
 
 `dnf install systemd-container`
 
