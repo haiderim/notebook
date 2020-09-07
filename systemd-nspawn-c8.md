@@ -12,6 +12,8 @@ Set SELinux to permissive before beginning
 
 `setenforce 0`
 
+`mkdir /var/lib/machines/cent8`
+
 `yum -y --nogpgcheck --releasever=8 --installroot /var/lib/machines/cent8 install systemd vim-minimal bash-completion openssl gpg net-tools initscripts bind-utils sudo cronie python tar hostname which passwd setup yum dnf`
 
 Boot the container and change password of root user
