@@ -41,7 +41,7 @@ Start and login
 `machinectl login cent8`
 
 ## Use host machine's network
-By default only loopback interface is available in the container
+By default only loopback interface is available in the container, please refer the manual for more options
 
 Remove `--network-veth` parameter from **/etc/systemd/system/machines.target.wants/systemd-nspawn@cent8.service**
 
