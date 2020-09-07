@@ -17,7 +17,9 @@ Set SELinux to permissive before beginning
 Boot the container and change password of root user
 
 `systemd-nspawn -D /var/lib/machines/cent8`
+
 `passwd`
+
 `logout`
 
 Now you can boot the container and login
@@ -27,4 +29,5 @@ Now you can boot the container and login
 Auto-start at boot
 
 `machinectl enable cent8`
+
 `machinectl start cent8`
