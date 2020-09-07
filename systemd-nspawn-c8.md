@@ -47,3 +47,6 @@ Remove `--network-veth` parameter from /etc/systemd/system/machines.target.wants
 
 `systemctl daemon-reload`
 
+## SELinux
+`restorecon -R /var/lib/machines/cent8/`
+
