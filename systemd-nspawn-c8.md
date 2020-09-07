@@ -58,10 +58,7 @@ Remove `--network-veth` parameter from **/etc/systemd/system/machines.target.wan
 
 `setsebool -P daemons_use_tty 1`
 
-``` 
-#============= setroubleshootd_t ==============
-allow setroubleshootd_t var_lib_t:file { lock open read };
-
+```
 #============= system_dbusd_t ==============
 allow system_dbusd_t devpts_t:chr_file { read write };
 
