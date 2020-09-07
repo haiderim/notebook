@@ -64,6 +64,14 @@ Remove `--network-veth` parameter from **/etc/systemd/system/machines.target.wan
 
 `setsebool -P daemons_use_tty 1`
 
+Create SELinux module
+
+`audit2allow -a -M systemd-nspawn`
+
+`semodule -i systemd-nspawn.pp`
+
+Output of `grep denied /var/log/audit/audit.log | audit2allow`  
+
 ```
 #============= system_dbusd_t ==============
 allow system_dbusd_t devpts_t:chr_file { read write };
