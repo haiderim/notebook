@@ -86,3 +86,5 @@ allow systemd_machined_t unconfined_service_t:file { getattr open read };
 allow systemd_machined_t unconfined_service_t:lnk_file read; 
 
 ```
+You can now set SELinux back to enforcing
+`setenforce 1`
