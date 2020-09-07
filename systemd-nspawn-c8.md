@@ -49,4 +49,6 @@ Remove `--network-veth` parameter from /etc/systemd/system/machines.target.wants
 
 ## SELinux
 `restorecon -R /var/lib/machines/cent8/`
+setsebool -P domain_can_mmap_files 1
+setsebool -P daemons_use_tty 1
 
