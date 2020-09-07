@@ -30,6 +30,6 @@ Auto-start at boot
 
 `machinectl enable cent8`
 
-`rm /var/lib/machines/cent7/etc/securetty`
+`rm /var/lib/machines/cent8/etc/securetty`
 
 `machinectl start cent8`
