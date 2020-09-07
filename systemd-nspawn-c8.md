@@ -64,12 +64,6 @@ Remove `--network-veth` parameter from **/etc/systemd/system/machines.target.wan
 
 `setsebool -P daemons_use_tty 1`
 
-Create SELinux module and load it
-
-`audit2allow -a -M systemd-nspawn`
-
-`semodule -i systemd-nspawn.pp`
-
 Output of `grep denied /var/log/audit/audit.log | audit2allow`  
 
 ```
@@ -86,6 +80,14 @@ allow systemd_machined_t unconfined_service_t:file { getattr open read };
 allow systemd_machined_t unconfined_service_t:lnk_file read; 
 
 ```
+
+Create SELinux module and load it
+
+`audit2allow -a -M systemd-nspawn`
+
+`semodule -i systemd-nspawn.pp`
+
+
 You can now set SELinux back to enforcing
 
 `setenforce 1`
