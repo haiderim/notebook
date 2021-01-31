@@ -27,8 +27,7 @@ CTRL+](6 Times)
 machinectl poweroff cent7
 Remove --network-veth parameter from /etc/systemd/system/machines.target.wants/systemd-nspawn@cent7.service
 And Add After=network-online.target network-pre.target network.target under Unit section in the same file
-semanage boolean -m --on daemons_use_tty
-semanage boolean -m --on nis_enabled
+
 
 Inside container
 /opt/microsoft/omsagent/bin/omsadmin.sh -w xxxxxxxxxxxxxxxxxxx -s xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
@@ -198,6 +197,10 @@ local7.=alert;local7.=crit;local7.=debug;local7.=emerg;local7.=err;local7.=info;
 /etc/rsyslog.d/95-security-config-omsagent.conf
 if $rawmsg contains "CEF:" or $rawmsg contains "ASA-" then @@127.0.0.1:25227
 & ~
+
+SELINUX
+semanage boolean -m --on daemons_use_tty
+semanage boolean -m --on nis_enabled
 
 #============= system_dbusd_t ==============
 allow system_dbusd_t devpts_t:chr_file { read write };
