@@ -1,0 +1,222 @@
+mkdir /var/lib/machines/cent7 -p
+
+yum -y --nogpgcheck --releasever=7 --installroot /var/lib/machines/cent7 install systemd vim-minimal bash-completion openssl gpg initscripts sudo cronie python tar hostname which passwd setup yum iproute rootfiles
+
+systemd-nspawn -D /var/lib/machines/cent7
+passwd
+adduser admin
+passwd admin
+usermod -a -G wheel admin
+logout
+
+systemd-nspawn -bD /var/lib/machines/cent7
+hostnamectl set-hostname cent7-oms
+poweroff
+
+cp /home/ihaider/omsagent-1.13.33-0.universal.x64.sh /var/lib/machines/cent7/root/
+systemd-nspawn -bD /var/lib/machines/cent7
+bash omsagent-1.13.33-0.universal.x64.sh --install
+
+Step 6:
+systemctl enable machines.target
+machinectl enable cent7
+rm /var/lib/machines/cent7/etc/securetty
+machinectl start cent7
+machinectl login cent7
+CTRL+](6 Times)
+machinectl poweroff cent7
+Remove --network-veth parameter from /etc/systemd/system/machines.target.wants/systemd-nspawn@cent7.service
+And Add After=network-online.target network-pre.target network.target under Unit section in the same file
+semanage boolean -m --on daemons_use_tty
+semanage boolean -m --on nis_enabled
+
+Inside container
+/opt/microsoft/omsagent/bin/omsadmin.sh -w xxxxxxxxxxxxxxxxxxx -s xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+/etc/opt/microsoft/omsagent/conf/omsagent.d/syslog.conf
+<source>
+  type syslog
+  port 25225
+  bind 127.0.0.1
+  protocol_type tcp
+  tag oms.syslog
+</source>
+
+<filter oms.syslog.**>
+  type filter_syslog
+</filter>
+
+/etc/opt/microsoft/omsagent/conf/omsagent.d/security_events.conf
+<source>
+  type syslog
+  port 25227
+  bind 127.0.0.1
+  protocol_type tcp
+  tag oms.security
+  format /(?<time>(?:\w+ +){2,3}(?:\d+:){2}\d+|\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.[\w\-\:\+]{3,12}):?\s*(?:(?<host>[^: ]+) ?:?)?\s*(?<ident>.*CEF.+?(?=0\|)|%ASA[0-9\-]{8,10})\s*:?(?<message>0\|.*|.*)/
+  <parse>
+     message_format auto
+  </parse>
+</source>
+
+
+<filter oms.security.**>
+  type filter_syslog_security
+</filter>
+
+/etc/opt/microsoft/omsagent/conf/omsagent.d/monitor.conf
+
+<source>
+  type monitor_agent
+  tag oms.health
+  port 25325
+  emit_interval 5m
+  emit_config true
+</source>
+
+<source>
+  type oms_heartbeat
+  interval 1m
+</source>
+
+<filter oms.health.**>
+  type filter_operation
+</filter>
+
+<match oms.health.** oms.heartbeat.**>
+  type out_oms
+  log_level info
+  run_in_background false
+
+  omsadmin_conf_path /etc/opt/microsoft/omsagent/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/conf/omsadmin.conf
+  cert_path /etc/opt/microsoft/omsagent/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/certs/oms.crt
+  key_path /etc/opt/microsoft/omsagent/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/certs/oms.key
+
+  buffer_chunk_limit 1m
+  buffer_type file
+  buffer_path /var/opt/microsoft/omsagent/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/state/out_oms_health*.buffer
+  buffer_queue_limit 5
+  buffer_queue_full_action drop_oldest_chunk
+  flush_interval 20s
+  retry_limit 6
+  retry_wait 30s
+  max_retry_wait 30m
+</match>
+
+Inside host machine
+
+bash omsagent-1.13.33-0.universal.x64.sh --install
+
+/opt/microsoft/omsagent/bin/omsadmin.sh -w xxxxxxxxxxxxxxxxxxx -s xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+/etc/opt/microsoft/omsagent/conf/omsagent.d/syslog.conf
+<source>
+  type syslog
+  port 25224
+  bind 127.0.0.1
+  protocol_type tcp
+  tag oms.syslog
+</source>
+
+<filter oms.syslog.**>
+  type filter_syslog
+</filter>
+
+/etc/opt/microsoft/omsagent/conf/omsagent.d/security_events.conf
+<source>
+  type syslog
+  port 25226
+  bind 127.0.0.1
+  protocol_type tcp
+  tag oms.security
+  format /(?<time>(?:\w+ +){2,3}(?:\d+:){2}\d+|\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.[\w\-\:\+]{3,12}):?\s*(?:(?<host>[^: ]+) ?:?)?\s*(?<ident>.*CEF.+?(?=0\|)|%ASA[0-9\-]{8,10})\s*:?(?<message>0\|.*|.*)/
+  <parse>
+     message_format auto
+  </parse>
+</source>
+
+
+<filter oms.security.**>
+  type filter_syslog_security
+</filter>
+
+/etc/opt/microsoft/omsagent/conf/omsagent.d/monitor.conf
+<source>
+  type monitor_agent
+  tag oms.health
+  port 25324
+  emit_interval 5m
+  emit_config true
+</source>
+
+<source>
+  type oms_heartbeat
+  interval 1m
+</source>
+
+<filter oms.health.**>
+  type filter_operation
+</filter>
+
+<match oms.health.** oms.heartbeat.**>
+  type out_oms
+  log_level info
+  run_in_background false
+
+  omsadmin_conf_path /etc/opt/microsoft/omsagent/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/conf/omsadmin.conf
+  cert_path /etc/opt/microsoft/omsagent/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/certs/oms.crt
+  key_path /etc/opt/microsoft/omsagent/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/certs/oms.key
+
+  buffer_chunk_limit 1m
+  buffer_type file
+  buffer_path /var/opt/microsoft/omsagent/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/state/out_oms_health*.buffer
+  buffer_queue_limit 5
+  buffer_queue_full_action drop_oldest_chunk
+  flush_interval 20s
+  retry_limit 6
+  retry_wait 30s
+  max_retry_wait 30m
+</match>
+
+/etc/rsyslog.d/security-config-omsagent.conf
+if $rawmsg contains "CEF:" or $rawmsg contains "ASA-" then @@127.0.0.1:25226
+
+/etc/rsyslog.d/95-omsagent.conf
+
+# OMS Syslog collection for workspace xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+auth.=alert;auth.=crit;auth.=debug;auth.=emerg;auth.=err;auth.=info;auth.=notice;auth.=warning  @@127.0.0.1:25224
+authpriv.=alert;authpriv.=crit;authpriv.=debug;authpriv.=emerg;authpriv.=err;authpriv.=info;authpriv.=notice;authpriv.=warning  @@127.0.0.1:25224
+local0.=alert;local0.=crit;local0.=debug;local0.=emerg;local0.=err;local0.=info;local0.=notice;local0.=warning  @@127.0.0.1:25224
+local1.=alert;local1.=crit;local1.=debug;local1.=emerg;local1.=err;local1.=info;local1.=notice;local1.=warning  @@127.0.0.1:25224
+local2.=alert;local2.=crit;local2.=debug;local2.=emerg;local2.=err;local2.=info;local2.=notice;local2.=warning  @@127.0.0.1:25224
+local3.=alert;local3.=crit;local3.=debug;local3.=emerg;local3.=err;local3.=info;local3.=notice;local3.=warning  @@127.0.0.1:25224
+local4.=alert;local4.=crit;local4.=debug;local4.=emerg;local4.=err;local4.=info;local4.=notice;local4.=warning  @@127.0.0.1:25224
+local5.=alert;local5.=crit;local5.=debug;local5.=emerg;local5.=err;local5.=info;local5.=notice;local5.=warning  @@127.0.0.1:25224
+local6.=alert;local6.=crit;local6.=debug;local6.=emerg;local6.=err;local6.=info;local6.=notice;local6.=warning  @@127.0.0.1:25224
+local7.=alert;local7.=crit;local7.=debug;local7.=emerg;local7.=err;local7.=info;local7.=notice;local7.=warning  @@127.0.0.1:25224
+
+/etc/rsyslog.d/95-security-config-omsagent.conf
+if $rawmsg contains "CEF:" or $rawmsg contains "ASA-" then @@127.0.0.1:25227
+& ~
+
+#============= system_dbusd_t ==============
+allow system_dbusd_t devpts_t:chr_file { read write };
+
+#============= systemd_machined_t ==============
+allow systemd_machined_t devpts_t:filesystem getattr;
+allow systemd_machined_t self:unix_dgram_socket sendto;
+allow systemd_machined_t systemd_unit_file_t:service stop;
+allow systemd_machined_t tmpfs_t:lnk_file read;
+allow systemd_machined_t tmpfs_t:sock_file write;
+allow systemd_machined_t unconfined_service_t:dir search;
+allow systemd_machined_t unconfined_service_t:file { getattr open read };
+allow systemd_machined_t unconfined_service_t:lnk_file read;
+allow systemd_machined_t unconfined_service_t:process signal;
+
+semanage permissive -a systemd_machined_t
+semanage permissive -a system_dbusd_t
+
+semanage permissive -l
+
+semanage permissive -d system_dbusd_t
+semanage permissive -d systemd_machined_t
