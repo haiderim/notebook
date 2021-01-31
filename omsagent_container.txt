@@ -13,7 +13,7 @@ systemd-nspawn -bD /var/lib/machines/cent7
 hostnamectl set-hostname cent7-oms
 poweroff
 
-cp /home/ihaider/omsagent-1.13.33-0.universal.x64.sh /var/lib/machines/cent7/root/
+cp /home/haiderim/omsagent-1.13.33-0.universal.x64.sh /var/lib/machines/cent7/root/
 systemd-nspawn -bD /var/lib/machines/cent7
 bash omsagent-1.13.33-0.universal.x64.sh --install
 
