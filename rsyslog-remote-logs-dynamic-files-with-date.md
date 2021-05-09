@@ -7,7 +7,7 @@ The following config receives logs and writes them to folders for each host by d
 _/etc/rsyslog.d/100-remote.conf_
 ```###Begin Config###
 
-#Receive logs and write them in a folder based on IP from which they are received
+#Receive logs and write them in a folder based on IP from which they are received, new file will be created each day
 $template RemoteHost,"/var/log/remote/%fromhost-ip%/%$year%-%$month%-%$day%.log"
 
 #Create ruleset
