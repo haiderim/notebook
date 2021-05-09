@@ -4,7 +4,7 @@
 
 The following config receives logs and writes them to folders for each host by date and at the same time prevents remote logs from being written to /var/log/messages.
 
-/etc/rsyslog.d/100-remote.conf
+_/etc/rsyslog.d/100-remote.conf_
 ```###Begin Config###
 
 #Receive logs and write them in a folder based on IP from which they are received
