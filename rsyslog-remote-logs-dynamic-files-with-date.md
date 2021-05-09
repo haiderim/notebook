@@ -2,7 +2,7 @@
 
 *Tested on Alma Linux 8.3*
 
-The following config receives logs and writes them to folders for each host by date and at the same time prevents remote logs from being written to /var/log/messages.
+The following config receives logs and writes them to folders for each host by date and at the same time prevents remote logs from being written to */var/log/messages.*
 
 _/etc/rsyslog.d/100-remote.conf_
 ```###Begin Config###
