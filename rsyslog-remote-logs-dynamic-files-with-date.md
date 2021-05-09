@@ -5,7 +5,7 @@
 The following config receives logs and writes them to folders for each host by date and at the same time prevents remote logs from being written to /var/log/messages.
 
 /etc/rsyslog.d/100-remote.conf
-`###Begin Config###
+```###Begin Config###
 
 #Receive logs and write them in a folder based on IP from which they are received
 $template RemoteHost,"/var/log/remote/%fromhost-ip%/%$year%-%$month%-%$day%.log"
@@ -21,4 +21,4 @@ input(type="imudp" port="514" RuleSet="remote")
 #Prevent remote logs from being written to /var/log/messages
 if $fromhost-ip != '127.0.0.1' then stop
 
-###End Config###`
+###End Config###```
