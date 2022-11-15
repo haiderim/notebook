@@ -1,0 +1,25 @@
+###Both WEC and WEF servers were not part of any AD domain and host entries were in place for each other
+
+1. Setup step-ca and step-cli on the WEC server
+2. Install root and intermediate ca certificates on the WEC server under Computer account
+3. Issue server certificate from the step-ca service and install it after combining both crt+key to a pfx
+4. Install the pfx under personal certificates store of the computer account on the WEC server
+5. If the client certificate was issued by an Intermediate certification authority and the collector is running Windows 2012 or later you will have to configure the following registry key:(This is the case with step-ca)
+HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\SecurityProviders\Schannel\ClientAuthTrustMode (DWORD) = 2
+
+6. Configure winrm service over https using the server certificate issued by step-ca:  New-Item -Path WSMan:\LocalHost\Listener -Transport HTTPS -Address * -CertificateThumbPrint {cert-thumbprint}
+7. Create eventlog subscription over HTTPS using Source Initiated config, add the non-domain computer and select the proper ca certificate from the list which was used to issue the WEC server certificate and will be used to issue the WEF server certificate as well 
+7. Issue WEF certificate on the source computer using step-cli, combine the crt + key to a pfx
+8. Install the pfx under personal certificates store of the computer account on the WEF server
+9. Add Network Service account to the Event Log Readers group
+10. Allow Network Service account to read the certificate key: 
+    Open the Certificates management console for Local machine on the Event Source computer.
+    Right click on the client certificate then Manage Private keys.
+    Grant Read permission to the NETWORK SERVICE user.
+11. Finally add the GPO on the source WEF server to forward the logs to WEC server: 
+    Navigate to the Local Computer Policy\Computer Configuration\Administrative Templates\Windows Components\Event Forwarding.
+    Open “Configure the server address, refresh interval, and issuer certificate authority of a target Subscription Manager” policy.
+    Enable the policy and click the SubscriptionManagers “Show...” button.
+    In the SubscriptionManagers window enter the following string:
+    Server=HTTPS://<FQDN of the Event Collector server>:5986/wsman/SubscriptionManager/WEC,Refresh= <Refresh interval in seconds>,IssuerCA=<Thumbprint of the issuing CA certificate>
+	Run gpupdate /force and look at Microsoft-Windows-Eventlog-ForwardingPlugin/Operational eventlog for any errors, you may need to reboot the source WEF server in some cases.
