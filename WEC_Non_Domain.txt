@@ -4,7 +4,7 @@
 2. Install root and intermediate ca certificates on the WEC server under Computer account
 3. Issue server certificate from the step-ca service and install it after combining both crt+key to a pfx
 4. Install the pfx under personal certificates store of the computer account on the WEC server
-5. If the client certificate was issued by an Intermediate certification authority and the collector is running Windows 2012 or later you will have to configure the following registry key:(This is the case with step-ca)
+5. If the client certificate was issued by an Intermediate CA and the collector is running Windows 2012 or later you will have to configure the following registry key:(This is the case with step-ca)
 HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\SecurityProviders\Schannel\ClientAuthTrustMode (DWORD) = 2
 
 6. Configure winrm service over https using the server certificate issued by step-ca:  New-Item -Path WSMan:\LocalHost\Listener -Transport HTTPS -Address * -CertificateThumbPrint {cert-thumbprint}
