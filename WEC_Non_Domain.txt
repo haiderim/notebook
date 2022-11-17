@@ -2,14 +2,14 @@
 
 1. Setup step-ca and step-cli on the WEC server
 2. Install root and intermediate ca certificates on the WEC server under Computer account
-3. Issue server certificate from the step-ca service and install it after combining both crt+key to a pfx
+3. Issue server certificate from the step-ca using p12 option, rename to pfx
 4. Install the pfx under personal certificates store of the computer account on the WEC server
 5. If the client certificate was issued by an Intermediate CA and the collector is running Windows 2012 or later you will have to configure the following registry key:(This is the case with step-ca)
 HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\SecurityProviders\Schannel\ClientAuthTrustMode (DWORD) = 2
 
 6. Configure winrm service over https using the server certificate issued by step-ca:  New-Item -Path WSMan:\LocalHost\Listener -Transport HTTPS -Address * -CertificateThumbPrint {cert-thumbprint}
 7. Create eventlog subscription over HTTPS using Source Initiated config, add the non-domain computer and select the proper ca certificate from the list which was used to issue the WEC server certificate and will be used to issue the WEF server certificate as well 
-7. Issue WEF certificate on the source computer using step-cli, combine the crt + key to a pfx
+7. Issue WEF certificate on the source computer using step-cli using p12, rename to pfx
 8. Install the pfx under personal certificates store of the computer account on the WEF server
 9. Add Network Service account to the Event Log Readers group
 10. Allow Network Service account to read the certificate key: 
