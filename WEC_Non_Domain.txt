@@ -1,24 +1,24 @@
 ###Both WEC and WEF servers were not part of any AD domain and host entries were in place for each other and firewall rule for port 5986 was added in wec server
-
-1. Setup step-ca and step-cli on the WEC server
-2. Install root and intermediate ca certificates on the WEC server under Computer account
-3. Issue server certificate from the step-ca using p12 option
-4. Install the p12 certificate under personal certificates store of the computer account on the WEC server
-5. If the client certificate was issued by an Intermediate CA and the collector is running Windows 2012 or later you will have to configure the following registry key:(This is the case with step-ca)
+1. Reconfigure the WinRM service on both WEF & WEC servers to have its own process: sc config WinRM type=own
+2. Setup step-ca and step-cli on the WEC server
+3. Install root and intermediate ca certificates on the WEC server under Computer account
+4. Issue server certificate from the step-ca using p12 option
+5. Install the p12 certificate under personal certificates store of the computer account on the WEC server
+6. If the client certificate was issued by an Intermediate CA and the collector is running Windows 2012 or later you will have to configure the following registry key:(This is the case with step-ca)
 HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\SecurityProviders\Schannel\ClientAuthTrustMode (DWORD) = 2
 
-6. Configure winrm service over https using the server certificate issued by step-ca: winrm create winrm/config/Listener?Address=*+Transport=HTTPS @{Hostname="<FQDN of the collector>";CertificateThumbprint="<Thumb print of the server authentication certificate>"}
-7. Map CA certificate for authentication on WEC server: winrm create winrm/config/service/certmapping?Issuer=<Thumbprint of the issuing CA certificate>+Subject=*+URI=* @{UserName="<username>";Password="<password>"} -remote:localhost
-8. Test Certificate based authentication from WEF server: winrm g winrm/config -r:https://<Event Collector FQDN>:5986 -a:certificate -certificate:"<Thumbprint of the client authentication certificate>"
-9. Create eventlog subscription over HTTPS using Source Initiated config, add the non-domain computer and select the proper ca certificate from the list which was used to issue the WEC server certificate and will be used to issue the WEF server certificate as well 
-10. Issue WEF certificate on the source computer using step-cli using p12
-11. Install the p12 cerrtificate under personal certificates store of the computer account on the WEF server
-12. Add Network Service account to the Event Log Readers group
-13. Allow Network Service account to read the certificate key: 
+7. Configure winrm service over https using the server certificate issued by step-ca: winrm create winrm/config/Listener?Address=*+Transport=HTTPS @{Hostname="<FQDN of the collector>";CertificateThumbprint="<Thumb print of the server authentication certificate>"}
+8. Map CA certificate for authentication on WEC server: winrm create winrm/config/service/certmapping?Issuer=<Thumbprint of the issuing CA certificate>+Subject=*+URI=* @{UserName="<username>";Password="<password>"} -remote:localhost
+9. Test Certificate based authentication from WEF server: winrm g winrm/config -r:https://<Event Collector FQDN>:5986 -a:certificate -certificate:"<Thumbprint of the client authentication certificate>"
+10. Create eventlog subscription over HTTPS using Source Initiated config, add the non-domain computer and select the proper ca certificate from the list which was used to issue the WEC server certificate and will be used to issue the WEF server certificate as well 
+11. Issue WEF certificate on the source computer using step-cli using p12
+12. Install the p12 cerrtificate under personal certificates store of the computer account on the WEF server
+13. Add Network Service account to the Event Log Readers group
+14. Allow Network Service account to read the certificate key: 
     Open the Certificates management console for Local machine on the Event Source computer.
     Right click on the client certificate then Manage Private keys.
     Grant Read permission to the NETWORK SERVICE user.
-14. Finally add the GPO on the source WEF server to forward the logs to WEC server: 
+15. Finally add the GPO on the source WEF server to forward the logs to WEC server: 
     Navigate to the Local Computer Policy\Computer Configuration\Administrative Templates\Windows Components\Event Forwarding.
     Open “Configure the server address, refresh interval, and issuer certificate authority of a target Subscription Manager” policy.
     Enable the policy and click the SubscriptionManagers “Show...” button.
