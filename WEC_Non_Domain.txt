@@ -30,12 +30,10 @@ HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\SecurityProviders\Schannel\C
 
 step certificate create Homelab-CA Homelab-CA.crt Homelab-CA.key --profile root-ca --no-password --insecure
 
-step certificate create Homelab-Inter-CA Homelab-Inter-CA.crt Homelab-Inter-CA.key --profile intermediate-ca --ca Homelab-CA.crt --ca-key Homelab-CA.key --no-password --insecure
+step certificate create Win-Srv22-VM-01 Win-Srv22-VM-01.crt Win-Srv22-VM-01.key --profile leaf --ca Homelab-CA.crt --ca-key Homelab-CA.key --no-password --insecure --not-after 43800h
 
-step certificate create Win-Srv22-VM-01 Win-Srv22-VM-01.crt Win-Srv22-VM-01.key --profile leaf --ca Homelab-Inter-CA.crt --ca-key Homelab-Inter-CA.key --no-password --insecure --not-after 43800h
+step certificate create Win-Srv22-VM-03 Win-Srv22-VM-03.crt Win-Srv22-VM-03.key --profile leaf --ca Homelab-CA.crt --ca-key Homelab-CA.key --no-password --insecure --not-after 43800h
 
-step certificate create Win-Srv22-VM-03 Win-Srv22-VM-03.crt Win-Srv22-VM-03.key --profile leaf --ca Homelab-Inter-CA.crt --ca-key Homelab-Inter-CA.key --no-password --insecure --not-after 43800h
+step certificate p12 Win-Srv22-VM-01.p12 Win-Srv22-VM-01.crt Win-Srv22-VM-01.key --no-password --insecure
 
-step certificate p12 Win-Srv22-VM-01.p12 Win-Srv22-VM-01.crt Win-Srv22-VM-01.key --ca Homelab-Inter-CA.crt --no-password --insecure
-
-step certificate p12 Win-Srv22-VM-03.p12 Win-Srv22-VM-03.crt Win-Srv22-VM-03.key --ca Homelab-Inter-CA.crt --no-password --insecure
+step certificate p12 Win-Srv22-VM-03.p12 Win-Srv22-VM-03.crt Win-Srv22-VM-03.key --no-password --insecure
