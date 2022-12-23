@@ -37,3 +37,7 @@ step certificate create Win-Srv22-VM-03 Win-Srv22-VM-03.crt Win-Srv22-VM-03.key 
 step certificate p12 Win-Srv22-VM-01.p12 Win-Srv22-VM-01.crt Win-Srv22-VM-01.key --no-password --insecure
 
 step certificate p12 Win-Srv22-VM-03.p12 Win-Srv22-VM-03.crt Win-Srv22-VM-03.key --no-password --insecure
+
+
+
+###Tested with Server 2008 R2, Server 2012 R2, Server 2016, Server 2019, Server 2022
