@@ -1,5 +1,5 @@
 ###Both WEC and WEF servers were not part of any AD domain and host entries were in place for each other and firewall rule for port 5986 was added in wec server
-1. Reconfigure the WinRM service on both WEF & WEC servers to have its own process: sc config WinRM type=own
+1. Reconfigure the WinRM service on both WEF & WEC servers to have its own process: sc config WinRM type= own
 2. Setup step-ca and step-cli on the WEC server
 3. Install root and intermediate ca certificates on the WEC server under Computer account
 4. Issue server certificate from the step-ca using p12 option
