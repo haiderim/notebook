@@ -1,0 +1,9 @@
+#!/bin/bash
+#The script changes logging settings in Firewall Network policy layer to enable firewall sessions and disable connection logging, you'd need to publish the changes manually and generate the id.txt by issuing mgmt_cli login -r true > id.txt
+echo "Enter total number of rules in policy"
+read END
+echo "Enter policy layer name"
+read layername
+for ((i=1;i<=END;i++)); do
+mgmt_cli set access-rule rule-number $i track.per-session true track.per-connection false track.enable-firewall-session true track.type "Detailed Log" layer "$layername" -s id.txt
+done
