@@ -1,5 +1,5 @@
 #!/bin/bash
-#The script changes logging settings in Firewall Network policy layer to enable firewall sessions and disable connection logging, you'd need to publish the changes manually. Publish wasn't included as you'd ideally want to review the changes and then publish them manually.
+#The script changes logging settings in Firewall Network policy layer to enable firewall sessions and disable connection logging, you'd need to publish the changes manually. Publish wasn't included as you'd ideally want to review the changes and then publish them manually. The script was tested on R80.40 and R81.10 management servers.
 mgmt_cli login -r true > id.txt
 echo "Enter total number of rules in policy"
 read limit
