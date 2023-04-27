@@ -1,3 +1,5 @@
+#This script will extract domains from HTTP Archive that has been exported from any web browser
+
 #Load the HAR file
 $har = Get-Content -Path "Path\to\har.har" -Raw | ConvertFrom-Json
 #Extract domains from the file
