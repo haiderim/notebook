@@ -1,2 +1,2 @@
 # notebook
-Personal notes/tutorials that may help others and myself in the future
+Personal notes/tutorials/scripts that may help others and myself in the future
