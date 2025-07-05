@@ -246,10 +246,10 @@ partition_disk() {
     sgdisk -n 2:0:+"$BOOT_SIZE" -t 2:8300 -c 2:"Linux Boot Partition" "$TARGET_DISK"
     sgdisk -n 3:0:0 -t 3:8300 -c 3:"Linux LUKS Container" "$TARGET_DISK"
 
-    # Get partition names
-    ESP_PART="${TARGET_DISK}p1"
-    BOOT_PART="${TARGET_DISK}p2"
-    LUKS_PART="${TARGET_DISK}p3"
+    # Get partition names reliably
+    ESP_PART=$(lsblk -o NAME,PARTLABEL | grep "EFI System Partition" | awk '{print "/dev/"$1}')
+    BOOT_PART=$(lsblk -o NAME,PARTLABEL | grep "Linux Boot Partition" | awk '{print "/dev/"$1}')
+    LUKS_PART=$(lsblk -o NAME,PARTLABEL | grep "Linux LUKS Container" | awk '{print "/dev/"$1}')
 
     # Format partitions
     mkfs.fat -F 32 "$ESP_PART"
@@ -331,121 +331,118 @@ generate_fstab() {
     confirm_action "Proceed with generating and modifying /etc/fstab?"
     genfstab -U /mnt >> /mnt/etc/fstab
 
-    # Add a tmpfs mount for /tmp to reduce wear on SSDs
-    echo "tmpfs /tmp tmpfs noatime,mode=1777 0 0" >> /mnt/etc/fstab
+    # Add Btrfs subvolume options and LUKS timeout
+    sed -i "s|/dev/mapper/cryptroot / btrfs defaults|/dev/mapper/cryptroot / btrfs ${BTRFS_MOUNT_OPTS},subvol=@,x-systemd.device-timeout=0|g" /mnt/etc/fstab
+    sed -i "s|/dev/mapper/cryptroot /home btrfs defaults|/dev/mapper/cryptroot /home btrfs ${BTRFS_MOUNT_OPTS},subvol=@home|g" /mnt/etc/fstab
+    sed -i "s|/dev/mapper/cryptroot /.snapshots btrfs defaults|/dev/mapper/cryptroot /.snapshots btrfs ${BTRFS_MOUNT_OPTS},subvol=@snapshots|g" /mnt/etc/fstab
+    sed -i "s|/dev/mapper/cryptroot /var/log btrfs defaults|/dev/mapper/cryptroot /var/log btrfs ${BTRFS_MOUNT_OPTS},subvol=@var_log|g" /mnt/etc/fstab
+    sed -i "s|/dev/mapper/cryptroot /tmp btrfs defaults|/dev/mapper/cryptroot /tmp btrfs ${BTRFS_MOUNT_OPTS},subvol=@tmp|g" /mnt/etc/fstab
+    sed -i "s|/dev/mapper/cryptroot /swap btrfs defaults|/dev/mapper/cryptroot /swap btrfs ${BTRFS_SWAP_OPTS},subvol=@swap|g" /mnt/etc/fstab
 
     echo "fstab generated and modified."
 }
 
-chroot_and_configure_system() {
-    echo "Chrooting into the new system for configuration..."
-    confirm_action "Proceed with chrooting and configuring the new system (locale, timezone, hostname, users, passwords, mkinitcpio, swapfile)?"
-    arch-chroot /mnt /bin/bash <<EOF
-    # Locale
-    echo "$LOCALE UTF-8" >> /etc/locale.gen
-    locale-gen
-    echo "LANG=$LOCALE" > /etc/locale.conf
+create_chroot_script() {
+    echo "Creating chroot configuration script..."
+    cat <<EOF > /mnt/chroot_script.sh
+#!/bin/bash
+set -euo pipefail
 
-    # Keyboard layout
-    echo "KEYMAP=$KEYMAP" > /etc/vconsole.conf
+# --- Variables passed from main script ---
+LOCALE="$LOCALE"
+KEYMAP="$KEYMAP"
+TIMEZONE="$TIMEZONE"
+HOSTNAME="$HOSTNAME"
+USERNAME="$USERNAME"
+SUDO_ACCESS="$SUDO_ACCESS"
+KERNEL_NAME="$KERNEL_NAME"
+KERNEL_PACKAGE="$KERNEL_PACKAGE"
+LUKS_UUID="$LUKS_UUID"
+BTRFS_MOUNT_OPTS="$BTRFS_MOUNT_OPTS"
+SWAPFILE_SIZE="$SWAPFILE_SIZE"
 
-    # Timezone
-    ln -sf /usr/share/zoneinfo/$TIMEZONE /etc/localtime
-    hwclock --systohc
+# --- Chroot Configuration ---
 
-    # Hostname (using user input)
-    echo "$HOSTNAME" > /etc/hostname
-    echo "127.0.0.1 localhost" >> /etc/hosts
-    echo "::1       localhost" >> /etc/hosts
-    echo "127.0.1.1 $HOSTNAME.localdomain $HOSTNAME" >> /etc/hosts
+# Locale
+echo "$LOCALE UTF-8" >> /etc/locale.gen
+locale-gen
+echo "LANG=$LOCALE" > /etc/locale.conf
 
-    # Network Configuration (systemd-networkd)
-    echo "[Match]" > /etc/systemd/network/20-wired.network
-    echo "Name=en*" >> /etc/systemd/network/20-wired.network
-    echo "[Network]" >> /etc/systemd/network/20-wired.network
-    echo "DHCP=yes" >> /etc/systemd/network/20-wired.network
-    systemctl enable systemd-networkd
-    systemctl enable systemd-resolved
-    ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
+# Keyboard layout
+echo "KEYMAP=$KEYMAP" > /etc/vconsole.conf
 
-    # Root password (explicit prompt)
-    echo "Please set the password for the root user:"
-    passwd
+# Timezone
+ln -sf /usr/share/zoneinfo/$TIMEZONE /etc/localtime
+hwclock --systohc
 
-    # Create user account (using user input)
-    useradd -m -g users -s /bin/bash "$USERNAME"
-    echo "Please set the password for user '$USERNAME':"
-    passwd "$USERNAME"
+# Hostname
+echo "$HOSTNAME" > /etc/hostname
+cat <<EOT >> /etc/hosts
+127.0.0.1 localhost
+::1       localhost
+127.0.1.1 $HOSTNAME.localdomain $HOSTNAME
+EOT
 
-    # Configure sudo for wheel group if requested
-    if [[ "$SUDO_ACCESS" == "yes" ]]; then
-        usermod -aG wheel "$USERNAME"
-        echo "%wheel ALL=(ALL:ALL) ALL" > /etc/sudoers.d/wheel
-        echo "User '$USERNAME' added to wheel group and sudoers."
-    else
-        echo "User '$USERNAME' NOT added to wheel group."
-    fi
+# Network Configuration
+systemctl enable systemd-networkd
+systemctl enable systemd-resolved
+ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
 
-    # mkinitcpio configuration
-    # The KERNEL_NAME variable is passed from the outer script
-    # Ensure the correct initramfs name is used based on the selected kernel
-    sed -i 's/^HOOKS=(base udev autodetect modconf block filesystems keyboard fsck)/HOOKS=(base udev autodetect keyboard keymap consolefont modconf block sd-encrypt btrfs filesystems fsck)/' /etc/mkinitcpio.conf
-    mkinitcpio -P
+# User and Passwords
+echo "Set the root password:"
+passwd
+echo "Creating user $USERNAME..."
+useradd -m -g users -s /bin/bash "$USERNAME"
+echo "Set the password for $USERNAME:"
+passwd "$USERNAME"
 
-    # Create swapfile on @swap subvolume
-    btrfs filesystem mkswapfile --size "$SWAPFILE_SIZE" /swap/swapfile
-    echo "/swap/swapfile none swap defaults 0 0" >> /etc/fstab
-    swapon /swap/swapfile
+# Sudo access
+if [[ "$SUDO_ACCESS" == "yes" ]]; then
+    usermod -aG wheel "$USERNAME"
+    echo "%wheel ALL=(ALL:ALL) ALL" > /etc/sudoers.d/wheel
+    echo "User '$USERNAME' added to wheel group for sudo access."
+fi
 
-    # Enable Display Manager if a DE was selected
-    if [[ -n "$DM_SERVICE" ]]; then
-        systemctl enable "$DM_SERVICE"
-        echo "Enabled display manager: $DM_SERVICE"
-    fi
+# mkinitcpio
+sed -i 's/^HOOKS=(base udev autodetect modconf block filesystems keyboard fsck)/HOOKS=(base udev autodetect keyboard keymap consolefont modconf block sd-encrypt btrfs filesystems fsck)/' /etc/mkinitcpio.conf
+mkinitcpio -P
 
-    echo "System configuration complete in chroot."
-EOF
-}
+# Swapfile
+btrfs filesystem mkswapfile --size "$SWAPFILE_SIZE" /swap/swapfile
+echo "/swap/swapfile none swap defaults 0 0" >> /etc/fstab
+swapon /swap/swapfile
 
-setup_bootloader_and_secureboot() {
-    echo "Setting up systemd-boot and Secure Boot..."
-    confirm_action "Proceed with installing systemd-boot, configuring boot entries, and setting up Secure Boot with sbctl?"
+# Bootloader and Secure Boot
+bootctl install
 
-    arch-chroot /mnt /bin/bash <<EOF
-    # Install systemd-boot
-    bootctl install
+echo "default arch.conf" > /boot/loader/loader.conf
+echo "timeout 3" >> /boot/loader/loader.conf
+echo "editor no" >> /boot/loader/loader.conf
 
-    # Configure systemd-boot entries
-    echo "default arch.conf" > /boot/loader/loader.conf
-    echo "timeout 3" >> /boot/loader/loader.conf
-    echo "editor no" >> /boot/loader/loader.conf
+# Correct kernel parameter for sd-encrypt is luks.name
+cat <<EOT > /boot/loader/entries/arch.conf
+title   Arch Linux
+linux   /vmlinuz-$KERNEL_NAME
+initrd  /initramfs-$KERNEL_NAME.img
+options luks.name=$LUKS_UUID=cryptroot root=/dev/mapper/cryptroot rw $BTRFS_MOUNT_OPTS rd.luks.options=discard
+EOT
 
-    # Create arch.conf entry using KERNEL_NAME
-    echo "title   Arch Linux" > /boot/loader/entries/arch.conf
-    echo "linux   /vmlinuz-$KERNEL_NAME" >> /boot/loader/entries/arch.conf
-    echo "initrd  /initramfs-$KERNEL_NAME.img" >> /boot/loader/entries/arch.conf
-    echo "options rd.luks.name=$LUKS_UUID=cryptroot root=/dev/mapper/cryptroot rw $BTRFS_MOUNT_OPTS rd.luks.options=discard" >> /boot/loader/entries/arch.conf
+cat <<EOT > /boot/loader/entries/arch-fallback.conf
+title   Arch Linux (fallback)
+linux   /vmlinuz-$KERNEL_NAME
+initrd  /initramfs-$KERNEL_NAME-fallback.img
+options luks.name=$LUKS_UUID=cryptroot root=/dev/mapper/cryptroot rw $BTRFS_MOUNT_OPTS rd.luks.options=discard
+EOT
 
-    # Optional: Create arch-fallback.conf entry using KERNEL_NAME
-    echo "title   Arch Linux (fallback)" > /boot/loader/entries/arch-fallback.conf
-    echo "linux   /vmlinuz-$KERNEL_NAME" >> /boot/loader/entries/arch-fallback.conf
-    echo "initrd  /initramfs-$KERNEL_NAME-fallback.img" >> /boot/loader/entries/arch-fallback.img
-    echo "options rd.luks.name=$LUKS_UUID=cryptroot root=/dev/mapper/cryptroot rw $BTRFS_MOUNT_OPTS rd.luks.options=discard" >> /boot/loader/entries/arch-fallback.conf
+sbctl create-keys
+sbctl enroll-keys -m
+sbctl sign -s /boot/efi/EFI/systemd/systemd-bootx64.efi
+sbctl sign -s /boot/vmlinuz-$KERNEL_NAME
+sbctl sign -s /boot/initramfs-$KERNEL_NAME.img
+sbctl sign -s /boot/initramfs-$KERNEL_NAME-fallback.img
 
-    # Secure Boot Setup with sbctl
-    echo "Creating Secure Boot keys and enrolling them..."
-    sbctl create-keys
-    sbctl enroll-keys -m
-
-    # Sign bootloader and initial kernel/initramfs using KERNEL_NAME
-    sbctl sign -s /boot/efi/EFI/systemd/systemd-bootx64.efi
-    sbctl sign -s /boot/vmlinuz-$KERNEL_NAME
-    sbctl sign -s /boot/initramfs-$KERNEL_NAME.img
-    sbctl sign -s /boot/initramfs-$KERNEL_NAME-fallback.img
-
-    # Automate kernel signing with a pacman hook
-    mkdir -p /etc/pacman.d/hooks/
-    cat <<EOF_HOOK > /etc/pacman.d/hooks/90-sbctl-sign.hook
+# Pacman hook for sbctl
+cat <<EOF_HOOK > /etc/pacman.d/hooks/90-sbctl-sign.hook
 [Trigger]
 Operation = Install
 Operation = Upgrade
@@ -458,32 +455,19 @@ Description = Signing kernel and initramfs with sbctl...
 When = PostTransaction
 Exec = /usr/bin/sbctl sign -s /boot/vmlinuz-$KERNEL_NAME -s /boot/initramfs-$KERNEL_NAME.img -s /boot/initramfs-$KERNEL_NAME-fallback.img
 EOF_HOOK
-    echo "Pacman hook for auto-signing kernels created."
 
-    echo "Bootloader and Secure Boot setup complete."
+echo "Chroot configuration complete."
+
 EOF
+
+    chmod +x /mnt/chroot_script.sh
+    echo "Chroot script created."
 }
 
-setup_snapper() {
-    echo "Setting up Snapper for Btrfs snapshots..."
-    confirm_action "Proceed with setting up Snapper configurations and enabling its services?"
-    arch-chroot /mnt /bin/bash <<EOF
-    # Create Snapper configuration for root
-    snapper -c root create-config /
-
-    # Adjust Snapper configuration (optional, example values)
-    # sed -i 's/TIMELINE_LIMIT_HOURLY="10"/TIMELINE_LIMIT_HOURLY="5"/' /etc/snapper/configs/root
-    # sed -i 's/TIMELINE_LIMIT_DAILY="10"/TIMELINE_LIMIT_DAILY="7"/' /etc/snapper/configs/root
-
-    # Enable Snapper services
-    systemctl enable snapper-timeline.timer
-    systemctl enable snapper-cleanup.timer
-
-    # Create Snapper configuration for home (optional)
-    snapper -c home create-config /home
-
-    echo "Snapper setup complete."
-EOF
+run_chroot_script() {
+    echo "Running chroot configuration script..."
+    arch-chroot /mnt /chroot_script.sh
+    echo "Chroot script execution finished."
 }
 
 final_cleanup() {
@@ -510,9 +494,8 @@ setup_luks
 setup_btrfs
 install_base_system
 generate_fstab
-chroot_and_configure_system
-setup_bootloader_and_secureboot
-setup_snapper
+create_chroot_script
+run_chroot_script
 final_cleanup
 
 echo -e "\n================================================================="
