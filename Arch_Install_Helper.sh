@@ -235,78 +235,6 @@ get_user_details() {
     done
 }
 
-select_desktop_environment() {
-    echo -e "
---- Desktop Environment Selection ---"
-    echo "1) GNOME"
-    echo "2) KDE Plasma"
-    echo "3) XFCE"
-    echo "4) None (command-line only)"
-    read -p "Enter your choice (1-4): " DE_CHOICE
-
-    case "$DE_CHOICE" in
-        1)
-            DE_PACKAGES="gnome gnome-tweaks"
-            DM_SERVICE="gdm.service"
-            ;;
-        2)
-            DE_PACKAGES="plasma-meta konsole"
-            DM_SERVICE="sddm.service"
-            ;;
-        3)
-            DE_PACKAGES="xfce4 xfce4-goodies"
-            DM_SERVICE="lightdm.service"
-            ;;
-        4)
-            DE_PACKAGES=""
-            DM_SERVICE=""
-            ;;
-        *)
-            echo "Invalid choice. Defaulting to command-line only."
-            DE_PACKAGES=""
-            DM_SERVICE=""
-            ;;
-    esac
-    echo "Selected desktop environment packages: $DE_PACKAGES"
-}
-
-select_graphics_driver() {
-    echo -e "
---- Graphics Driver Selection ---"
-    echo "1) NVIDIA"
-    echo "2) AMD"
-    echo "3) Intel"
-    echo "4) VMware/VirtualBox (virtual machine)"
-    read -p "Enter your choice (1-4): " GFX_CHOICE
-
-    case "$GFX_CHOICE" in
-        1)
-            GFX_PACKAGES="nvidia-dkms nvidia-utils"
-            ;;
-        2)
-            GFX_PACKAGES="mesa xf86-video-amdgpu"
-            ;;
-        3)
-            GFX_PACKAGES="mesa xf86-video-intel"
-            ;;
-        4)
-            GFX_PACKAGES="mesa xf86-video-vmware"
-            ;;
-        *)
-            echo "Invalid choice. Defaulting to Mesa (open-source drivers)."
-            GFX_PACKAGES="mesa"
-            ;;
-    esac
-    echo "Selected graphics driver packages: $GFX_PACKAGES"
-}
-
-rank_mirrors() {
-    echo "Ranking pacman mirrors for fastest downloads..."
-    pacman -S --noconfirm reflector
-    reflector --country "United States" --age 12 --protocol https --sort rate --save /etc/pacman.d/mirrorlist
-    echo "Mirror list updated."
-}
-
 partition_disk() {
     echo "Partitioning disk: $TARGET_DISK..."
     confirm_action "Proceed with partitioning $TARGET_DISK? This will erase all data."
@@ -394,7 +322,7 @@ install_base_system() {
     echo "Installing base system and essential packages..."
     confirm_action "Proceed with installing Arch Linux base system and selected kernel ($KERNEL_PACKAGE)?"
     # Use the selected KERNEL_PACKAGE
-    pacstrap /mnt base "$KERNEL_PACKAGE" linux-firmware btrfs-progs snapper systemd-boot efibootmgr sbctl mkinitcpio cryptsetup dosfstools e2fsprogs $DE_PACKAGES $GFX_PACKAGES # refind-efi is a dependency of sbctl-mkinitcpio-hook, often pulled.
+    pacstrap /mnt base "$KERNEL_PACKAGE" linux-firmware btrfs-progs snapper systemd-boot efibootmgr sbctl mkinitcpio cryptsetup dosfstools e2fsprogs # refind-efi is a dependency of sbctl-mkinitcpio-hook, often pulled.
     echo "Base system installed."
 }
 
@@ -577,9 +505,6 @@ select_kernel
 select_keyboard_layout
 select_locale_options
 get_user_details
-select_desktop_environment
-select_graphics_driver
-rank_mirrors
 partition_disk
 setup_luks
 setup_btrfs
