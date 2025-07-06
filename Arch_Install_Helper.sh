@@ -2,7 +2,7 @@
 
 # Arch Linux Auto-Installation Script
 # Features: LUKS encryption, Btrfs with Snapper, Secure Boot with systemd-boot
-# Version: 5.8 (Final Hardened)
+# Version: 5.9 (Final Hardened)
 # Warning: This script will wipe the target disk completely!
 
 set -e
@@ -180,7 +180,8 @@ log "Generating fstab..."
 genfstab -U /mnt >> /mnt/etc/fstab
 sed -i "/swap/d" /mnt/etc/fstab
 
-echo "$LUKS_UUID" > /mnt/tmp/luks_uuid_value
+# Write UUID to a file in the new root, not /tmp
+echo "$LUKS_UUID" > /mnt/luks_uuid_value
 
 # --- SYSTEM CONFIGURATION (IN CHROOT) ---
 confirm_action "Configuring system in chroot"
@@ -227,8 +228,9 @@ console-mode keep
 editor no
 EOL
 
-LUKS_UUID_FROM_FILE=\$(cat /tmp/luks_uuid_value)
-rm /tmp/luks_uuid_value
+# Read the UUID from the file in the root directory
+LUKS_UUID_FROM_FILE=\$(cat /luks_uuid_value)
+rm /luks_uuid_value
 if [ -z "\$LUKS_UUID_FROM_FILE" ]; then
     echo -e "\033[0;31m[ERROR]\033[0m LUKS UUID could not be read inside chroot."
     exit 1
