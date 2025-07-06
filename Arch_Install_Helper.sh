@@ -141,13 +141,20 @@ pre_partition_cleanup() {
 
     # Close any LUKS containers on the target disk
     for dev in $(ls /dev/mapper/ | grep -E "^crypt"); do
+        # Check if the LUKS device is associated with the target disk
         if cryptsetup status "$dev" &>/dev/null; then
-            if cryptsetup status "$dev" | grep -q "device: $DISK"; then
+            if cryptsetup status "$dev" | grep -q "device: $(basename "$DISK")"; then # Use basename for comparison
                 warn "Closing LUKS container /dev/mapper/$dev on $DISK..."
                 cryptsetup close "$dev" || true
             fi
         fi
     done
+
+    # Aggressively clear filesystem and partition table signatures
+    # This is crucial for parted to work on a "clean" disk
+    log "Clearing old filesystem and partition table signatures with wipefs..."
+    wipefs -af "$DISK" || true # Use || true to prevent script from exiting if wipefs fails (e.g., no signatures)
+
     log "Pre-partitioning cleanup complete."
 }
 
