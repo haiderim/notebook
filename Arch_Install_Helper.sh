@@ -62,6 +62,31 @@ echo -e "${RED}Make sure you have backed up all important data!${NC}"
 echo ""
 confirm_action "Starting Arch Linux installation process"
 
+# --- AGGRESSIVE INITIAL CLEANUP ---
+# This section ensures the system is clean from previous failed runs or existing mounts
+# before any disk selection or partitioning.
+log "Performing initial aggressive cleanup of any existing mounts and LUKS mappings..."
+
+# Attempt to unmount /mnt and its subdirectories
+if mountpoint -q /mnt; then
+    warn "Unmounting /mnt and its subdirectories..."
+    umount -R /mnt 2>/dev/null || true
+fi
+
+# Attempt to close any cryptroot LUKS mapping
+if cryptsetup status cryptroot &>/dev/null; then
+    warn "Closing existing 'cryptroot' LUKS mapping..."
+    cryptsetup close cryptroot 2>/dev/null || true
+fi
+
+# Attempt to remove all device mapper devices (including any lingering LUKS mappings)
+warn "Removing any lingering device mapper devices..."
+dmsetup remove_all 2>/dev/null || true
+
+log "Initial aggressive cleanup complete."
+# --- END AGGRESSIVE INITIAL CLEANUP ---
+
+
 # Interactive configuration
 info "Select installation disk:"
 lsblk -d -o NAME,SIZE,MODEL
@@ -126,23 +151,16 @@ USERNAME=${USERNAME:-user}
 log "Updating system clock..."
 timedatectl set-ntp true
 
-# --- Pre-installation cleanup of existing mounts/LUKS on /mnt if script is re-run or failed ---
-# This is crucial to ensure the target disk is not in use by the current live environment's mounts.
-log "Attempting to unmount /mnt and close cryptroot from previous runs/failures..."
-umount -R /mnt 2>/dev/null || true # Unmount everything under /mnt
-cryptsetup close cryptroot 2>/dev/null || true # Close the LUKS mapping if it's open
-log "Initial cleanup of /mnt and cryptroot complete (if they were mounted/open)."
-
-
 # Function to clean up disk before partitioning
 pre_partition_cleanup() {
     log "Performing pre-partitioning cleanup on $DISK..."
     # Unmount all partitions on the target disk (e.g., /dev/sda1, /dev/sda2)
-    # This specifically targets partitions on the chosen disk, not /mnt.
-    for part in $(lsblk -no NAME "$DISK" | tail -n +2); do # Get partition names, skip disk itself
-        if mount | grep -q "/dev/$part"; then
-            warn "Unmounting partition /dev/$part..."
-            umount "/dev/$part" || true
+    # This specifically targets partitions on the chosen disk.
+    for part_name in $(lsblk -no NAME "$DISK" | tail -n +2); do # Get partition names, skip disk itself
+        local part_path="/dev/$part_name"
+        if mountpoint -q "$part_path"; then # Check if it's a mountpoint
+            warn "Unmounting partition $part_path..."
+            umount "$part_path" || true
         fi
     done
 
@@ -157,12 +175,19 @@ pre_partition_cleanup() {
         if cryptsetup status "$dev" &>/dev/null; then
             LUKS_UNDERLYING_DEV=$(cryptsetup status "$dev" | grep "device:" | awk '{print $2}')
             # Check if the underlying device of the LUKS mapping is a partition of our target DISK
-            if [[ "$LUKS_UNDERLYING_DEV" == "${DISK}${PART_SUFFIX}"* ]]; then
+            if [[ "$LUKS_UNDERLYING_DEV" == "${DISK}${PART_SUFFIX}"* || "$LUKS_UNDERLYING_DEV" == "$DISK" ]]; then
                 warn "Closing LUKS container /dev/mapper/$dev on $LUKS_UNDERLYING_DEV..."
                 cryptsetup close "$dev" || true
             fi
         fi
     done
+
+    # Remove any device mapper entries for partitions on the disk
+    # This is often needed after closing LUKS containers
+    if command -v kpartx &>/dev/null; then
+        log "Removing kpartx device mapper entries for $DISK..."
+        kpartx -d "$DISK" || true
+    fi
 
     # Aggressively clear filesystem and partition table signatures
     # This is crucial for parted to work on a "clean" disk
@@ -170,8 +195,12 @@ pre_partition_cleanup() {
     wipefs -af "$DISK" || true # Use || true to prevent script from exiting if wipefs fails (e.g., no signatures)
     sync # Flush filesystem caches
 
+    # Tell the kernel to re-read the partition table (should be empty now)
+    log "Telling kernel to re-read partition table..."
+    partprobe -s "$DISK" || true # Use || true as it might fail if disk is truly blank
+
     # Remove all device mapper devices (including any lingering LUKS mappings)
-    log "Removing any lingering device mapper devices..."
+    log "Removing any lingering device mapper devices (final attempt)..."
     dmsetup remove_all || true # Use || true as it might fail if no devices exist
 
     log "Pre-partitioning cleanup complete."
