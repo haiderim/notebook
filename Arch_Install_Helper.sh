@@ -31,41 +31,27 @@ info() {
     echo -e "${BLUE}[INPUT]${NC} $1"
 }
 
-# Removed: Remote Logging Variables and Function
-# ENABLE_REMOTE_LOGGING="no"
-# LOG_NOTEPAD_URL="https://pastebin.com/api/api_post.php"
-# PASTEBIN_DEV_KEY=""
-
-# Removed: send_log_to_notepad function
-# send_log_to_notepad() { ... }
-
-
 confirm_action() {
     local action="$1"
-    # Removed: send_log_to_notepad call
     echo -e "${YELLOW}[CONFIRM]${NC} $action"
     read -p "Continue? (y/N): " -r
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        # Removed: send_log_to_notepad call
         error "Operation cancelled by user"
     fi
 }
 
 # Check if running as root
 if [[ $EUID -ne 0 ]]; then
-    # Removed: send_log_to_notepad call
     error "This script must be run as root"
 fi
 
 # Check if UEFI mode
 if [[ ! -d /sys/firmware/efi ]]; then
-    # Removed: send_log_to_notepad call
     error "This script requires UEFI mode"
 fi
 
 # Check if secure boot is available (EFI variables access)
 if [[ ! -d /sys/firmware/efi/efivars ]]; then
-    # Removed: send_log_to_notepad call
     error "EFI variables not accessible. Secure Boot setup may fail."
 fi
 
@@ -75,10 +61,6 @@ echo -e "${RED}WARNING: This script will COMPLETELY WIPE the selected disk!${NC}
 echo -e "${RED}Make sure you have backed up all important data!${NC}"
 echo ""
 confirm_action "Starting Arch Linux installation process"
-
-# Removed: Remote Logging Setup function and its call
-# configure_remote_logging() { ... }
-# configure_remote_logging # Call the function to configure logging
 
 # Interactive configuration
 info "Select installation disk:"
@@ -100,13 +82,10 @@ LUKS_PART="${DISK}${PART_SUFFIX}3"
 
 
 if [[ ! -b $DISK ]]; then
-    # Removed: send_log_to_notepad call
     error "Disk $DISK does not exist"
 fi
 
 confirm_action "This will WIPE ALL DATA on $DISK"
-# Removed: send_log_to_notepad call
-# send_log_to_notepad "Selected disk: $DISK"
 
 info "Select kernel variant:"
 echo "1) linux (default)"
@@ -119,80 +98,59 @@ case $KERNEL_CHOICE in
     3) KERNEL="linux-zen" ;;
     *) KERNEL="linux" ;;
 esac
-# Removed: send_log_to_notepad call
-# send_log_to_notepad "Selected kernel: $KERNEL"
 
 info "Select timezone:"
 echo "Examples: UTC, America/New_York, Europe/London, Asia/Tokyo"
 read -p "Timezone [UTC]: " TIMEZONE
 TIMEZONE=${TIMEZONE:-UTC}
-# Removed: send_log_to_notepad call
-# send_log_to_notepad "Selected timezone: $TIMEZONE"
+TIMEZONE=${TIMEZONE:-UTC} # Ensure default if empty
 
 info "Select locale:"
 read -p "Locale [en_US.UTF-8]: " LOCALE
 LOCALE=${LOCALE:-en_US.UTF-8}
-# Removed: send_log_to_notepad call
-# send_log_to_notepad "Selected locale: $LOCALE"
+LOCALE=${LOCALE:-en_US.UTF-8} # Ensure default if empty
 
 info "Select keymap:"
 read -p "Keymap [us]: " KEYMAP
 KEYMAP=${KEYMAP:-us}
-# Removed: send_log_to_notepad call
-# send_log_to_notepad "Selected keymap: $KEYMAP"
+KEYMAP=${KEYMAP:-us} # Ensure default if empty
 
 info "Set hostname:"
 read -p "Hostname [x280-arch]: " HOSTNAME
 HOSTNAME=${HOSTNAME:-x280-arch}
-# Removed: send_log_to_notepad call
-# send_log_to_notepad "Selected hostname: $HOSTNAME"
+HOSTNAME=${HOSTNAME:-x280-arch} # Ensure default if empty
 
 info "Set username:"
 read -p "Username [user]: " USERNAME
 USERNAME=${USERNAME:-user}
-# Removed: send_log_to_notepad call
-# send_log_to_notepad "Selected username: $USERNAME"
+USERNAME=${USERNAME:-user} # Ensure default if empty
 
 # Update system clock
 log "Updating system clock..."
 timedatectl set-ntp true
-# Removed: send_log_to_notepad call
-# send_log_to_notepad "System clock updated."
 
 # Partition the disk
 confirm_action "Partitioning disk $DISK"
 log "Creating GPT partition table..."
-parted -s $DISK mklabel gpt
-# Removed: send_log_to_notepad call
-# send_log_to_notepad "GPT partition table created."
+parted -s "$DISK" mklabel gpt
 
 log "Creating EFI System Partition (1GB)..."
-parted -s $DISK mkpart primary fat32 1MiB 1GiB
-parted -s $DISK set 1 esp on
-# Removed: send_log_to_notepad call
-# send_log_to_notepad "EFI System Partition created: $ESP_PART"
+parted -s "$DISK" mkpart primary fat32 1MiB 1GiB
+parted -s "$DISK" set 1 esp on
 
 log "Creating Boot partition (1GB)..."
-parted -s $DISK mkpart primary ext4 1GiB 2GiB
-# Removed: send_log_to_notepad call
-# send_log_to_notepad "Boot partition created: $BOOT_PART"
+parted -s "$DISK" mkpart primary ext4 1GiB 2GiB
 
 log "Creating LUKS partition (remaining space)..."
-parted -s $DISK mkpart primary 2GiB 100%
-# Removed: send_log_to_notepad call
-# send_log_to_notepad "LUKS partition created: $LUKS_PART"
+parted -s "$DISK" mkpart primary 2GiB 100%
 
 # Format partitions
 confirm_action "Formatting partitions"
 log "Formatting EFI partition ($ESP_PART)..."
 mkfs.fat -F32 "$ESP_PART"
-# Removed: send_log_to_notepad call
-# send_log_to_notepad "EFI partition formatted."
 
 log "Formatting boot partition ($BOOT_PART)..."
 mkfs.ext4 "$BOOT_PART"
-# Removed: send_log_to_notepad call
-# send_log_to_notepad "Boot partition formatted."
 
 # Setup LUKS encryption
 log "Setting up LUKS encryption..."
@@ -207,26 +165,17 @@ while true; do
     if [[ "$LUKS_PASS" == "$LUKS_PASS_CONFIRM" ]]; then
         break
     else
-        # Removed: send_log_to_notepad call
         error "Passphrases do not match. Please try again."
     fi
 done
 
 confirm_action "Creating LUKS container on $LUKS_PART (this may take a while)"
-# Removed: send_log_to_notepad call
-# send_log_to_notepad "Starting LUKS container creation on $LUKS_PART."
 cryptsetup luksFormat "$LUKS_PART" <<< "$LUKS_PASS"
 cryptsetup open "$LUKS_PART" cryptroot <<< "$LUKS_PASS"
-# Removed: send_log_to_notepad call
-# send_log_to_notepad "LUKS container created and opened."
 
 # Create Btrfs filesystem
 confirm_action "Creating Btrfs filesystem on /dev/mapper/cryptroot"
-# Removed: send_log_to_notepad call
-# send_log_to_notepad "Creating Btrfs filesystem on /dev/mapper/cryptroot."
 mkfs.btrfs -L arch /dev/mapper/cryptroot
-# Removed: send_log_to_notepad call
-# send_log_to_notepad "Btrfs filesystem created."
 
 # Mount and create subvolumes
 log "Creating Btrfs subvolumes..."
@@ -236,53 +185,40 @@ btrfs subvolume create /mnt/@home
 btrfs subvolume create /mnt/@var
 btrfs subvolume create /mnt/@tmp
 btrfs subvolume create /mnt/@snapshots
-# Swapfile will be created inside @swap subvolume later in chroot
-btrfs subvolume create /mnt/@swap
+btrfs subvolume create /mnt/@swap # For swapfile
 umount /mnt
-# Removed: send_log_to_notepad call
-# send_log_to_notepad "Btrfs subvolumes created."
 
-# Mount subvolumes with proper options
+# Mount subvolumes with proper options (corrected order for boot/efi)
 log "Mounting Btrfs subvolumes..."
 mount -o compress=zstd,noatime,subvol=@ /dev/mapper/cryptroot /mnt
-mkdir -p /mnt/{home,var,tmp,boot,boot/efi,.snapshots,swap}
+mkdir -p /mnt/{home,var,tmp,.snapshots,swap} # Create these directories first
 mount -o compress=zstd,noatime,subvol=@home /dev/mapper/cryptroot /mnt/home
 mount -o compress=zstd,noatime,subvol=@var /dev/mapper/cryptroot /mnt/var
 mount -o compress=zstd,noatime,subvol=@tmp /dev/mapper/cryptroot /mnt/tmp
 mount -o compress=zstd,noatime,subvol=@snapshots /dev/mapper/cryptroot /mnt/.snapshots
-# Mount the @swap subvolume for swapfile creation later
-mount -o noatime,subvol=@swap /dev/mapper/cryptroot /mnt/swap
-# Removed: send_log_to_notepad call
-# send_log_to_notepad "Btrfs subvolumes mounted."
+mount -o noatime,subvol=@swap /dev/mapper/cryptroot /mnt/swap # Mount the @swap subvolume for swapfile creation later
 
-# Mount boot partitions
+# Mount boot partitions (Crucial: mount /mnt/boot BEFORE creating /mnt/boot/efi)
+mkdir -p /mnt/boot # Ensure /mnt/boot exists
 mount "$BOOT_PART" /mnt/boot
+mkdir -p /mnt/boot/efi # Create /mnt/boot/efi AFTER /mnt/boot is mounted
 mount "$ESP_PART" /mnt/boot/efi
-# Removed: send_log_to_notepad call
-# send_log_to_notepad "Boot and EFI partitions mounted."
 
 # Install base system
 confirm_action "Installing base system packages"
 log "Installing base system and essential packages..."
-# Added networkmanager for broader network connectivity
 pacstrap /mnt base base-devel "$KERNEL" linux-firmware intel-ucode btrfs-progs snapper \
     vim nano sudo cryptsetup sbctl efibootmgr networkmanager
-# Removed: send_log_to_notepad call
-# send_log_to_notepad "Base system and packages installed."
 
 # Generate fstab
 log "Generating fstab..."
 genfstab -U /mnt >> /mnt/etc/fstab
-# Removed: send_log_to_notepad call
-# send_log_to_notepad "fstab generated."
 
 # Add Btrfs mount options to fstab and LUKS timeout
 log "Adding Btrfs mount options and LUKS timeout to fstab..."
 sed -i '/btrfs/ s/relatime/noatime,compress=zstd/' /mnt/etc/fstab
 # Add x-systemd.device-timeout=0 for LUKS device
 sed -i "/\/dev\/mapper\/cryptroot/s/defaults/defaults,x-systemd.device-timeout=0/" /mnt/etc/fstab
-# Removed: send_log_to_notepad call
-# send_log_to_notepad "fstab modified with Btrfs options and LUKS timeout."
 
 # Configure system in chroot
 confirm_action "Configuring system in chroot"
@@ -328,7 +264,6 @@ bootctl --path=/boot/efi install
 # Get UUID of encrypted partition (re-evaluate in chroot context)
 # Use the global variable passed from the outer script
 # CRYT_UUID=\$(blkid -s UUID -o value ${LUKS_PART}) # This line is problematic if LUKS_PART is not resolved in chroot
-# Instead, pass it from the outer script or re-derive it.
 # Re-deriving it for safety inside chroot:
 LUKS_UUID_CHROOT=\$(blkid -s UUID -o value ${LUKS_PART})
 
@@ -396,12 +331,12 @@ systemctl enable snapper-timeline.timer
 systemctl enable snapper-cleanup.timer
 
 # Create user
-useradd -m -G wheel -s /bin/bash $USERNAME
+useradd -m -G wheel -s /bin/bash "$USERNAME" # Use quotes for variable
 
 # Set user password
 echo "Set password for user '$USERNAME':"
 while true; do
-    passwd $USERNAME && break
+    passwd "$USERNAME" && break # Use quotes for variable
     echo "Password setting failed. Please try again."
 done
 
@@ -467,8 +402,6 @@ echo "Signed files:"
 sbctl list-files
 
 EOF
-# Removed: send_log_to_notepad call
-# send_log_to_notepad "System configuration in chroot complete."
 
 # Create post-install script
 cat > /mnt/home/$USERNAME/post-install.sh <<'EOF'
@@ -500,16 +433,12 @@ log "Example: /etc/systemd/network/20-wired.network"
 EOF
 
 chmod +x /mnt/home/$USERNAME/post-install.sh
-# Removed: send_log_to_notepad call
-# send_log_to_notepad "Post-install script created."
 
 # Unmount filesystems
 log "Unmounting filesystems..."
 confirm_action "Unmounting filesystems and closing LUKS container. System will be ready for reboot."
 umount -R /mnt
 cryptsetup close cryptroot
-# Removed: send_log_to_notepad call
-# send_log_to_notepad "Filesystems unmounted and LUKS container closed."
 
 log "Installation complete!"
 log "System is configured with:"
