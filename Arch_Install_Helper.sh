@@ -2,7 +2,7 @@
 
 # Arch Linux Auto-Installation Script
 # Features: LUKS encryption, Btrfs with Snapper, Secure Boot with systemd-boot
-# Version: 5.5 (Final Hardened)
+# Version: 5.6 (Final Hardened)
 # Warning: This script will wipe the target disk completely!
 
 set -e
@@ -152,12 +152,17 @@ umount /mnt
 log "Mounting filesystems..."
 BTRFS_OPTS="compress=zstd,noatime"
 mount -o "$BTRFS_OPTS,subvol=@" /dev/mapper/cryptroot /mnt
-mkdir -p /mnt/{home,var,tmp,swap,boot/efi}
+# Create mount points for subvolumes, but handle /boot separately
+mkdir -p /mnt/{home,var,tmp,swap}
 mount -o "$BTRFS_OPTS,subvol=@home" /dev/mapper/cryptroot /mnt/home
 mount -o "$BTRFS_OPTS,subvol=@var" /dev/mapper/cryptroot /mnt/var
 mount -o "$BTRFS_OPTS,subvol=@tmp" /dev/mapper/cryptroot /mnt/tmp
 mount -o "subvol=@swap" /dev/mapper/cryptroot /mnt/swap
+
+# Correctly mount boot and EFI partitions
+mkdir -p /mnt/boot
 mount "$BOOT_PART" /mnt/boot
+mkdir -p /mnt/boot/efi
 mount "$ESP_PART" /mnt/boot/efi
 chmod 0755 /mnt/boot/efi
 
