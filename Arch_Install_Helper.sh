@@ -2,7 +2,7 @@
 
 # Arch Linux Auto-Installation Script
 # Features: LUKS encryption, Btrfs with Snapper, Secure Boot with systemd-boot
-# Version: 5.7 (Final Hardened)
+# Version: 5.8 (Final Hardened)
 # Warning: This script will wipe the target disk completely!
 
 set -e
@@ -89,6 +89,7 @@ read -p "Locale [en_US.UTF-8]: " LOCALE; LOCALE=${LOCALE:-en_US.UTF-8}
 read -p "Keymap [us]: " KEYMAP; KEYMAP=${KEYMAP:-us}
 read -p "Hostname [think-arch]: " HOSTNAME; HOSTNAME=${HOSTNAME:-think-arch}
 read -p "Username [user]: " USERNAME; USERNAME=${USERNAME:-user}
+read -p "Country for mirror selection (e.g., 'United States', India): " COUNTRY; COUNTRY=${COUNTRY:-"United States"}
 
 # --- PRE-INSTALLATION ---
 log "Updating system clock..."
@@ -144,22 +145,18 @@ if [ -z "$LUKS_UUID" ]; then error "Failed to retrieve LUKS partition UUID."; fi
 log "Creating Btrfs filesystem and subvolumes..."
 mkfs.btrfs -L arch /dev/mapper/cryptroot
 mount /dev/mapper/cryptroot /mnt
-# We create @, @home, etc., but NOT @snapshots. Snapper will create its own
-# nested .snapshots directory inside the @ subvolume when we run create-config.
 for vol in @ @home @var @tmp @swap; do btrfs subvolume create "/mnt/$vol"; done
 umount /mnt
 
 log "Mounting filesystems..."
 BTRFS_OPTS="compress=zstd,noatime"
 mount -o "$BTRFS_OPTS,subvol=@" /dev/mapper/cryptroot /mnt
-# Create mount points for subvolumes, including the previously missed /mnt/tmp
 mkdir -p /mnt/{home,var,tmp,swap}
 mount -o "$BTRFS_OPTS,subvol=@home" /dev/mapper/cryptroot /mnt/home
 mount -o "$BTRFS_OPTS,subvol=@var" /dev/mapper/cryptroot /mnt/var
 mount -o "$BTRFS_OPTS,subvol=@tmp" /dev/mapper/cryptroot /mnt/tmp
 mount -o "subvol=@swap" /dev/mapper/cryptroot /mnt/swap
 
-# Correctly mount boot and EFI partitions
 mkdir -p /mnt/boot
 mount "$BOOT_PART" /mnt/boot
 mkdir -p /mnt/boot/efi
@@ -167,12 +164,13 @@ mount "$ESP_PART" /mnt/boot/efi
 chmod 0755 /mnt/boot/efi
 
 # --- MIRROR & BASE SYSTEM INSTALLATION ---
-log "Updating pacman mirrorlist..."
+log "Updating pacman mirrorlist for country: '$COUNTRY'"
 pacman -Sy --noconfirm reflector
-reflector --latest 20 --protocol https --sort rate --save /etc/pacman.d/mirrorlist
+reflector --country "$COUNTRY" --latest 20 --protocol https --sort rate --save /etc/pacman.d/mirrorlist --verbose
+log "Forcing pacman database refresh with new mirrors..."
+pacman -Syy
 
 confirm_action "Installing base system and essential packages"
-# Add essential networking and utility packages, and explicit dependencies to avoid prompts
 pacstrap /mnt base base-devel "$KERNEL" linux-firmware intel-ucode amd-ucode btrfs-progs snapper \
     sudo cryptsetup sbctl efibootmgr networkmanager nano iproute2 inetutils dhcpcd wget reflector \
     iptables mkinitcpio
@@ -220,7 +218,6 @@ if ! bootctl --path=/boot/efi install; then
     echo -e "\033[0;31m[ERROR]\033[0m Failed to install systemd-boot."
     exit 1
 fi
-# Secure the random seed file created by bootctl
 chmod 600 /boot/efi/loader/random-seed
 
 cat > /boot/efi/loader/loader.conf <<EOL
@@ -242,8 +239,6 @@ if grep -q "GenuineIntel" /proc/cpuinfo; then
     UCODE_IMG="initrd /intel-ucode.img"
 elif grep -q "AuthenticAMD" /proc/cpuinfo; then
     UCODE_IMG="initrd /amd-ucode.img"
-else
-    UCODE_IMG="" # Explicitly set to empty if no known CPU
 fi
 
 cat > /boot/efi/loader/entries/arch.conf <<EOL
@@ -284,7 +279,6 @@ fallocate -l 4G /swap/swapfile
 chmod 0600 /swap/swapfile
 mkswap /swap/swapfile
 
-# Verify swapfile creation before adding to fstab
 if blkid -p /swap/swapfile | grep -q 'TYPE="swap"'; then
     echo "/swap/swapfile none swap defaults 0 0" >> /etc/fstab
     echo "[CHROOT] Swapfile configured and added to fstab."
@@ -294,7 +288,6 @@ fi
 
 # --- Snapper and Services ---
 echo "[CHROOT] Configuring Snapper and enabling services..."
-# Configure snapper first, then enable its services
 snapper -c root create-config /
 chmod 750 /.snapshots
 systemctl enable NetworkManager
