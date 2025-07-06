@@ -103,34 +103,57 @@ info "Select timezone:"
 echo "Examples: UTC, America/New_York, Europe/London, Asia/Tokyo"
 read -p "Timezone [UTC]: " TIMEZONE
 TIMEZONE=${TIMEZONE:-UTC}
-TIMEZONE=${TIMEZONE:-UTC} # Ensure default if empty
 
 info "Select locale:"
 read -p "Locale [en_US.UTF-8]: " LOCALE
 LOCALE=${LOCALE:-en_US.UTF-8}
-LOCALE=${LOCALE:-en_US.UTF-8} # Ensure default if empty
 
 info "Select keymap:"
 read -p "Keymap [us]: " KEYMAP
 KEYMAP=${KEYMAP:-us}
-KEYMAP=${KEYMAP:-us} # Ensure default if empty
 
 info "Set hostname:"
 read -p "Hostname [x280-arch]: " HOSTNAME
 HOSTNAME=${HOSTNAME:-x280-arch}
-HOSTNAME=${HOSTNAME:-x280-arch} # Ensure default if empty
 
 info "Set username:"
 read -p "Username [user]: " USERNAME
 USERNAME=${USERNAME:-user}
-USERNAME=${USERNAME:-user} # Ensure default if empty
 
 # Update system clock
 log "Updating system clock..."
 timedatectl set-ntp true
 
+# Function to clean up disk before partitioning
+pre_partition_cleanup() {
+    log "Performing pre-partitioning cleanup on $DISK..."
+    # Unmount all partitions on the target disk
+    if mount | grep -q "$DISK"; then
+        warn "Unmounting existing partitions on $DISK..."
+        umount -R "$DISK" || true # Use || true to prevent script from exiting if nothing is mounted
+    fi
+
+    # Deactivate any swap areas on the target disk
+    if swapon --show | grep -q "$DISK"; then
+        warn "Deactivating swap areas on $DISK..."
+        swapoff -a
+    fi
+
+    # Close any LUKS containers on the target disk
+    for dev in $(ls /dev/mapper/ | grep -E "^crypt"); do
+        if cryptsetup status "$dev" &>/dev/null; then
+            if cryptsetup status "$dev" | grep -q "device: $DISK"; then
+                warn "Closing LUKS container /dev/mapper/$dev on $DISK..."
+                cryptsetup close "$dev" || true
+            fi
+        fi
+    done
+    log "Pre-partitioning cleanup complete."
+}
+
 # Partition the disk
 confirm_action "Partitioning disk $DISK"
+pre_partition_cleanup # Call cleanup function before partitioning
 log "Creating GPT partition table..."
 parted -s "$DISK" mklabel gpt
 
