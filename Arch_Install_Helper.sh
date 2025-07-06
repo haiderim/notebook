@@ -2,7 +2,7 @@
 
 # Arch Linux Auto-Installation Script
 # Features: LUKS encryption, Btrfs with Snapper, Secure Boot with systemd-boot
-# Version: 5.6 (Final Hardened)
+# Version: 5.7 (Final Hardened)
 # Warning: This script will wipe the target disk completely!
 
 set -e
@@ -152,7 +152,7 @@ umount /mnt
 log "Mounting filesystems..."
 BTRFS_OPTS="compress=zstd,noatime"
 mount -o "$BTRFS_OPTS,subvol=@" /dev/mapper/cryptroot /mnt
-# Create mount points for subvolumes, but handle /boot separately
+# Create mount points for subvolumes, including the previously missed /mnt/tmp
 mkdir -p /mnt/{home,var,tmp,swap}
 mount -o "$BTRFS_OPTS,subvol=@home" /dev/mapper/cryptroot /mnt/home
 mount -o "$BTRFS_OPTS,subvol=@var" /dev/mapper/cryptroot /mnt/var
@@ -166,11 +166,16 @@ mkdir -p /mnt/boot/efi
 mount "$ESP_PART" /mnt/boot/efi
 chmod 0755 /mnt/boot/efi
 
-# --- BASE SYSTEM INSTALLATION ---
+# --- MIRROR & BASE SYSTEM INSTALLATION ---
+log "Updating pacman mirrorlist..."
+pacman -Sy --noconfirm reflector
+reflector --latest 20 --protocol https --sort rate --save /etc/pacman.d/mirrorlist
+
 confirm_action "Installing base system and essential packages"
-# Add essential networking and utility packages
+# Add essential networking and utility packages, and explicit dependencies to avoid prompts
 pacstrap /mnt base base-devel "$KERNEL" linux-firmware intel-ucode amd-ucode btrfs-progs snapper \
-    sudo cryptsetup sbctl efibootmgr networkmanager nano iproute2 inetutils dhcpcd wget
+    sudo cryptsetup sbctl efibootmgr networkmanager nano iproute2 inetutils dhcpcd wget reflector \
+    iptables mkinitcpio
 
 # --- FSTAB & CHROOT PREPARATION ---
 log "Generating fstab..."
@@ -215,6 +220,8 @@ if ! bootctl --path=/boot/efi install; then
     echo -e "\033[0;31m[ERROR]\033[0m Failed to install systemd-boot."
     exit 1
 fi
+# Secure the random seed file created by bootctl
+chmod 600 /boot/efi/loader/random-seed
 
 cat > /boot/efi/loader/loader.conf <<EOL
 default arch.conf
