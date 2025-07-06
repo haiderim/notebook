@@ -287,8 +287,8 @@ chmod 0700 /mnt/boot/efi # Set strict permissions on ESP
 # Install base system
 confirm_action "Installing base system packages"
 log "Installing base system and essential packages..."
-# Use echo 1 | for interactive prompts from pacstrap
-echo 1 | pacstrap /mnt base base-devel "$KERNEL" linux-firmware intel-ucode btrfs-progs snapper \
+# Use printf to send multiple '1' inputs for interactive prompts from pacstrap
+printf "1\n1\n" | pacstrap /mnt base base-devel "$KERNEL" linux-firmware intel-ucode btrfs-progs snapper \
     vim nano sudo cryptsetup sbctl efibootmgr networkmanager
 
 # Generate fstab
@@ -338,11 +338,18 @@ fi
 # Ensure kms is removed if present and not explicitly desired for minimal setup
 sed -i 's/\<kms\>//g' /etc/mkinitcpio.conf # Remove kms hook if present
 mkinitcpio -P
+# IMPORTANT: The sbctl mkinitcpio hook will warn "Secureboot key directory doesn't exist, not signing!"
+# during pacstrap's post-transaction phase because keys are created later in this chroot block.
+# This is expected and harmless for the initial install. The kernel and bootloader will be
+# manually signed below after key creation.
 
 # Install and configure systemd-boot
-# The D-Bus error from bootctl install is often benign in chroot if files are created.
-# Permissions are set in the outer script.
+# The D-Bus error from bootctl install is common in chroot environments as D-Bus might not be fully active.
+# It's usually benign if the bootloader files are created successfully.
 bootctl --path=/boot/efi install
+
+# Set strict permissions on the random-seed file created by bootctl
+chmod 0600 /boot/efi/loader/random-seed
 
 # Use the LUKS_UUID passed from the outer script
 # This is more reliable than re-deriving it inside chroot
@@ -535,9 +542,9 @@ log "After reboot:"
 log "1. Boot into the new system"
 log "2. Configure network (NetworkManager is installed, but you may need to enable/disable systemd-networkd)"
 log "3. Run the post-install script in your home directory: /home/$USERNAME/post-install.sh"
-4. Verify secure boot status with: bootctl status
-5. Check signed files with: sudo sbctl list-files
-""
+log "4. Verify secure boot status with: bootctl status"
+log "5. Check signed files with: sudo sbctl list-files"
+log ""
 warn "Make sure to backup your LUKS passphrase!"
 warn "The system will automatically sign kernels on updates."
 
