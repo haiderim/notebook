@@ -79,7 +79,7 @@ if cryptsetup status cryptroot &>/dev/null; then
     cryptsetup close cryptroot 2>/dev/null || true
 fi
 
-# Attempt to remove all device mapper devices (including any lingering LUKS mappings)
+# Attempt to remove all device mapper devices (includes any lingering LUKS mappings)
 warn "Removing any lingering device mapper devices..."
 dmsetup remove_all 2>/dev/null || true
 
@@ -193,11 +193,15 @@ pre_partition_cleanup() {
     # This is crucial for parted to work on a "clean" disk
     log "Clearing old filesystem and partition table signatures with wipefs..."
     wipefs -af "$DISK" || true # Use || true to prevent script from exiting if wipefs fails (e.g., no signatures)
+    blockdev --flushbufs "$DISK" || true # Flush disk buffers
     sync # Flush filesystem caches
+    sleep 1 # Give kernel a moment to process
 
     # Tell the kernel to re-read the partition table (should be empty now)
     log "Telling kernel to re-read partition table..."
     partprobe -s "$DISK" || true # Use || true as it might fail if disk is truly blank
+    udevadm settle # Wait for udev events to complete
+    sleep 1 # Give kernel a moment to process
 
     # Remove all device mapper devices (including any lingering LUKS mappings)
     log "Removing any lingering device mapper devices (final attempt)..."
@@ -210,7 +214,13 @@ pre_partition_cleanup() {
 confirm_action "Partitioning disk $DISK"
 pre_partition_cleanup # Call cleanup function before partitioning
 log "Creating GPT partition table..."
-parted -s "$DISK" mklabel gpt
+# Use a subshell to capture parted's output to check for persistent errors
+if ! parted -s "$DISK" mklabel gpt 2>&1 | tee /dev/stderr | grep -q "Partition(s) on .* are being used"; then
+    log "GPT partition table created."
+else
+    error "Failed to create GPT partition table. This often means the kernel is still holding references to the disk. Please reboot the Arch Linux ISO and try again."
+fi
+
 
 log "Creating EFI System Partition (1GB)..."
 parted -s "$DISK" mkpart primary fat32 1MiB 1GiB
