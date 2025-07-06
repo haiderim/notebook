@@ -299,7 +299,7 @@ confirm_action "Installing base system packages"
 log "Installing base system and essential packages..."
 # Use printf to send multiple '1' inputs for interactive prompts from pacstrap
 printf "1\n1\n" | pacstrap /mnt base base-devel "$KERNEL" linux-firmware intel-ucode btrfs-progs snapper \
-    vim nano sudo cryptsetup sbctl efibootmgr networkmanager
+    vim nano sudo cryptsetup sbctl efibootmgr networkmanager iptables mkinitcpio
 
 # Generate fstab
 log "Generating fstab..."
@@ -315,6 +315,8 @@ sed -i "/\/dev\/mapper\/cryptroot/s/defaults/defaults,x-systemd.device-timeout=0
 confirm_action "Configuring system in chroot"
 log "Configuring system in chroot..."
 arch-chroot /mnt /bin/bash <<EOF
+# Set a restrictive umask for files created in chroot
+umask 0077
 set -e
 
 # Set timezone
