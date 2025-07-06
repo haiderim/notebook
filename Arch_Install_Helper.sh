@@ -80,6 +80,8 @@ ESP_PART="${DISK}${PART_SUFFIX}1"
 BOOT_PART="${DISK}${PART_SUFFIX}2"
 LUKS_PART="${DISK}${PART_SUFFIX}3"
 
+# Global variable for LUKS UUID, to be set after LUKS setup
+LUKS_UUID=""
 
 if [[ ! -b $DISK ]]; then
     error "Disk $DISK does not exist"
@@ -124,14 +126,25 @@ USERNAME=${USERNAME:-user}
 log "Updating system clock..."
 timedatectl set-ntp true
 
+# --- Pre-installation cleanup of existing mounts/LUKS on /mnt if script is re-run or failed ---
+# This is crucial to ensure the target disk is not in use by the current live environment's mounts.
+log "Attempting to unmount /mnt and close cryptroot from previous runs/failures..."
+umount -R /mnt 2>/dev/null || true # Unmount everything under /mnt
+cryptsetup close cryptroot 2>/dev/null || true # Close the LUKS mapping if it's open
+log "Initial cleanup of /mnt and cryptroot complete (if they were mounted/open)."
+
+
 # Function to clean up disk before partitioning
 pre_partition_cleanup() {
     log "Performing pre-partitioning cleanup on $DISK..."
-    # Unmount all partitions on the target disk
-    if mount | grep -q "$DISK"; then
-        warn "Unmounting existing partitions on $DISK..."
-        umount -R "$DISK" || true # Use || true to prevent script from exiting if nothing is mounted
-    fi
+    # Unmount all partitions on the target disk (e.g., /dev/sda1, /dev/sda2)
+    # This specifically targets partitions on the chosen disk, not /mnt.
+    for part in $(lsblk -no NAME "$DISK" | tail -n +2); do # Get partition names, skip disk itself
+        if mount | grep -q "/dev/$part"; then
+            warn "Unmounting partition /dev/$part..."
+            umount "/dev/$part" || true
+        fi
+    done
 
     # Deactivate any swap areas on the target disk
     if swapon --show | grep -q "$DISK"; then
@@ -139,12 +152,13 @@ pre_partition_cleanup() {
         swapoff -a
     fi
 
-    # Close any LUKS containers on the target disk
+    # Close any LUKS containers associated with the target disk's partitions
     for dev in $(ls /dev/mapper/ | grep -E "^crypt"); do
-        # Check if the LUKS device is associated with the target disk
         if cryptsetup status "$dev" &>/dev/null; then
-            if cryptsetup status "$dev" | grep -q "device: $(basename "$DISK")"; then # Use basename for comparison
-                warn "Closing LUKS container /dev/mapper/$dev on $DISK..."
+            LUKS_UNDERLYING_DEV=$(cryptsetup status "$dev" | grep "device:" | awk '{print $2}')
+            # Check if the underlying device of the LUKS mapping is a partition of our target DISK
+            if [[ "$LUKS_UNDERLYING_DEV" == "${DISK}${PART_SUFFIX}"* ]]; then
+                warn "Closing LUKS container /dev/mapper/$dev on $LUKS_UNDERLYING_DEV..."
                 cryptsetup close "$dev" || true
             fi
         fi
@@ -154,6 +168,11 @@ pre_partition_cleanup() {
     # This is crucial for parted to work on a "clean" disk
     log "Clearing old filesystem and partition table signatures with wipefs..."
     wipefs -af "$DISK" || true # Use || true to prevent script from exiting if wipefs fails (e.g., no signatures)
+    sync # Flush filesystem caches
+
+    # Remove all device mapper devices (including any lingering LUKS mappings)
+    log "Removing any lingering device mapper devices..."
+    dmsetup remove_all || true # Use || true as it might fail if no devices exist
 
     log "Pre-partitioning cleanup complete."
 }
@@ -202,6 +221,7 @@ done
 confirm_action "Creating LUKS container on $LUKS_PART (this may take a while)"
 cryptsetup luksFormat "$LUKS_PART" <<< "$LUKS_PASS"
 cryptsetup open "$LUKS_PART" cryptroot <<< "$LUKS_PASS"
+LUKS_UUID=$(blkid -s UUID -o value "$LUKS_PART") # Capture LUKS UUID here
 
 # Create Btrfs filesystem
 confirm_action "Creating Btrfs filesystem on /dev/mapper/cryptroot"
@@ -291,11 +311,9 @@ mkinitcpio -P
 # Install and configure systemd-boot
 bootctl --path=/boot/efi install
 
-# Get UUID of encrypted partition (re-evaluate in chroot context)
-# Use the global variable passed from the outer script
-# CRYT_UUID=\$(blkid -s UUID -o value ${LUKS_PART}) # This line is problematic if LUKS_PART is not resolved in chroot
-# Re-deriving it for safety inside chroot:
-LUKS_UUID_CHROOT=\$(blkid -s UUID -o value ${LUKS_PART})
+# Use the LUKS_UUID passed from the outer script
+# This is more reliable than re-deriving it inside chroot
+LUKS_UUID_CHROOT="$LUKS_UUID"
 
 
 # Create systemd-boot entry
