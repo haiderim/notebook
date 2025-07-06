@@ -63,26 +63,17 @@ echo ""
 confirm_action "Starting Arch Linux installation process"
 
 # --- AGGRESSIVE INITIAL CLEANUP ---
-# This section ensures the system is clean from previous failed runs or existing mounts
-# before any disk selection or partitioning.
 log "Performing initial aggressive cleanup of any existing mounts and LUKS mappings..."
-
-# Attempt to unmount /mnt and its subdirectories
 if mountpoint -q /mnt; then
     warn "Unmounting /mnt and its subdirectories..."
     umount -R /mnt 2>/dev/null || true
 fi
-
-# Attempt to close any cryptroot LUKS mapping
 if cryptsetup status cryptroot &>/dev/null; then
     warn "Closing existing 'cryptroot' LUKS mapping..."
     cryptsetup close cryptroot 2>/dev/null || true
 fi
-
-# Attempt to remove all device mapper devices (includes any lingering LUKS mappings)
 warn "Removing any lingering device mapper devices..."
 dmsetup remove_all 2>/dev/null || true
-
 log "Initial aggressive cleanup complete."
 # --- END AGGRESSIVE INITIAL CLEANUP ---
 
@@ -154,73 +145,49 @@ timedatectl set-ntp true
 # Function to clean up disk before partitioning
 pre_partition_cleanup() {
     log "Performing pre-partitioning cleanup on $DISK..."
-    # Unmount all partitions on the target disk (e.g., /dev/sda1, /dev/sda2)
-    # This specifically targets partitions on the chosen disk.
-    for part_name in $(lsblk -no NAME "$DISK" | tail -n +2); do # Get partition names, skip disk itself
+    for part_name in $(lsblk -no NAME "$DISK" | tail -n +2); do
         local part_path="/dev/$part_name"
-        if mountpoint -q "$part_path"; then # Check if it's a mountpoint
+        if mountpoint -q "$part_path"; then
             warn "Unmounting partition $part_path..."
             umount "$part_path" || true
         fi
     done
-
-    # Deactivate any swap areas on the target disk
     if swapon --show | grep -q "$DISK"; then
         warn "Deactivating swap areas on $DISK..."
         swapoff -a
     fi
-
-    # Close any LUKS containers associated with the target disk's partitions
     for dev in $(ls /dev/mapper/ | grep -E "^crypt"); do
         if cryptsetup status "$dev" &>/dev/null; then
             LUKS_UNDERLYING_DEV=$(cryptsetup status "$dev" | grep "device:" | awk '{print $2}')
-            # Check if the underlying device of the LUKS mapping is a partition of our target DISK
             if [[ "$LUKS_UNDERLYING_DEV" == "${DISK}${PART_SUFFIX}"* || "$LUKS_UNDERLYING_DEV" == "$DISK" ]]; then
                 warn "Closing LUKS container /dev/mapper/$dev on $LUKS_UNDERLYING_DEV..."
                 cryptsetup close "$dev" || true
             fi
         fi
     done
-
-    # Remove any device mapper entries for partitions on the disk
-    # This is often needed after closing LUKS containers
-    if command -v kpartx &>/dev/null; then
-        log "Removing kpartx device mapper entries for $DISK..."
-        kpartx -d "$DISK" || true
-    fi
-
-    # Aggressively clear filesystem and partition table signatures
-    # This is crucial for parted to work on a "clean" disk
     log "Clearing old filesystem and partition table signatures with wipefs..."
-    wipefs -af "$DISK" || true # Use || true to prevent script from exiting if wipefs fails (e.g., no signatures)
-    blockdev --flushbufs "$DISK" || true # Flush disk buffers
-    sync # Flush filesystem caches
-    sleep 1 # Give kernel a moment to process
-
-    # Tell the kernel to re-read the partition table (should be empty now)
+    wipefs -af "$DISK" || true
+    blockdev --flushbufs "$DISK" || true
+    sync
+    sleep 1
     log "Telling kernel to re-read partition table..."
-    partprobe -s "$DISK" || true # Use || true as it might fail if disk is truly blank
-    udevadm settle # Wait for udev events to complete
-    sleep 1 # Give kernel a moment to process
-
-    # Remove all device mapper devices (including any lingering LUKS mappings)
+    partprobe -s "$DISK" || true
+    udevadm settle
+    sleep 1
     log "Removing any lingering device mapper devices (final attempt)..."
-    dmsetup remove_all || true # Use || true as it might fail if no devices exist
-
+    dmsetup remove_all || true
     log "Pre-partitioning cleanup complete."
 }
 
 # Partition the disk
 confirm_action "Partitioning disk $DISK"
-pre_partition_cleanup # Call cleanup function before partitioning
+pre_partition_cleanup
 log "Creating GPT partition table..."
-# Use a subshell to capture parted's output to check for persistent errors
 if ! parted -s "$DISK" mklabel gpt 2>&1 | tee /dev/stderr | grep -q "Partition(s) on .* are being used"; then
     log "GPT partition table created."
 else
     error "Failed to create GPT partition table. This often means the kernel is still holding references to the disk. Please reboot the Arch Linux ISO and try again."
 fi
-
 
 log "Creating EFI System Partition (1GB)..."
 parted -s "$DISK" mkpart primary fat32 1MiB 1GiB
@@ -258,9 +225,11 @@ while true; do
 done
 
 confirm_action "Creating LUKS container on $LUKS_PART (this may take a while)"
-cryptsetup luksFormat "$LUKS_PART" <<< "$LUKS_PASS"
+# Use --verbose for better feedback
+cryptsetup --verbose luksFormat "$LUKS_PART" <<< "$LUKS_PASS"
 cryptsetup open "$LUKS_PART" cryptroot <<< "$LUKS_PASS"
-LUKS_UUID=$(blkid -s UUID -o value "$LUKS_PART") # Capture LUKS UUID here
+LUKS_UUID=$(blkid -s UUID -o value "$LUKS_PART")
+export LUKS_UUID # Export for chroot environment
 
 # Create Btrfs filesystem
 confirm_action "Creating Btrfs filesystem on /dev/mapper/cryptroot"
@@ -274,31 +243,30 @@ btrfs subvolume create /mnt/@home
 btrfs subvolume create /mnt/@var
 btrfs subvolume create /mnt/@tmp
 btrfs subvolume create /mnt/@snapshots
-btrfs subvolume create /mnt/@swap # For swapfile
+btrfs subvolume create /mnt/@swap
 umount /mnt
 
-# Mount subvolumes with proper options (corrected order for boot/efi)
+# Mount subvolumes with proper options
 log "Mounting Btrfs subvolumes..."
 mount -o compress=zstd,noatime,subvol=@ /dev/mapper/cryptroot /mnt
-mkdir -p /mnt/{home,var,tmp,.snapshots,swap} # Create these directories first
+mkdir -p /mnt/{home,var,tmp,.snapshots,swap}
 mount -o compress=zstd,noatime,subvol=@home /dev/mapper/cryptroot /mnt/home
 mount -o compress=zstd,noatime,subvol=@var /dev/mapper/cryptroot /mnt/var
 mount -o compress=zstd,noatime,subvol=@tmp /dev/mapper/cryptroot /mnt/tmp
 mount -o compress=zstd,noatime,subvol=@snapshots /dev/mapper/cryptroot /mnt/.snapshots
-mount -o noatime,subvol=@swap /dev/mapper/cryptroot /mnt/swap # Mount the @swap subvolume for swapfile creation later
+mount -o noatime,subvol=@swap /dev/mapper/cryptroot /mnt/swap
 
-# Mount boot partitions (Crucial: mount /mnt/boot BEFORE creating /mnt/boot/efi)
-mkdir -p /mnt/boot # Ensure /mnt/boot exists
+# Mount boot partitions
+mkdir -p /mnt/boot
 mount "$BOOT_PART" /mnt/boot
-mkdir -p /mnt/boot/efi # Create /mnt/boot/efi AFTER /mnt/boot is mounted
+mkdir -p /mnt/boot/efi
 mount "$ESP_PART" /mnt/boot/efi
-chmod 0700 /mnt/boot/efi # Set strict permissions on ESP
+chmod 0700 /mnt/boot/efi
 
 # Install base system
 confirm_action "Installing base system packages"
 log "Installing base system and essential packages..."
-# Use printf to send multiple '1' inputs for interactive prompts from pacstrap
-printf "1\n1\n" | pacstrap /mnt base base-devel "$KERNEL" linux-firmware intel-ucode btrfs-progs snapper \
+pacstrap /mnt base base-devel "$KERNEL" linux-firmware intel-ucode btrfs-progs snapper \
     vim nano sudo cryptsetup sbctl efibootmgr networkmanager iptables mkinitcpio
 
 # Generate fstab
@@ -308,16 +276,13 @@ genfstab -U /mnt >> /mnt/etc/fstab
 # Add Btrfs mount options to fstab and LUKS timeout
 log "Adding Btrfs mount options and LUKS timeout to fstab..."
 sed -i '/btrfs/ s/relatime/noatime,compress=zstd/' /mnt/etc/fstab
-# Add x-systemd.device-timeout=0 for LUKS device
 sed -i "/\/dev\/mapper\/cryptroot/s/defaults/defaults,x-systemd.device-timeout=0/" /mnt/etc/fstab
 
 # Configure system in chroot
 confirm_action "Configuring system in chroot"
 log "Configuring system in chroot..."
 arch-chroot /mnt /bin/bash <<EOF
-# Set a restrictive umask for files created in chroot
-umask 0077
-set -e
+set -e # Exit on error within chroot
 
 # Set timezone
 ln -sf /usr/share/zoneinfo/$TIMEZONE /etc/localtime
@@ -334,39 +299,18 @@ echo "KEYMAP=$KEYMAP" > /etc/vconsole.conf
 # Set hostname
 echo "$HOSTNAME" > /etc/hostname
 cat > /etc/hosts <<EOL
-127.0.0.1   localhost
-::1         localhost
-127.0.1.1   $HOSTNAME.localdomain $HOSTNAME
+127.0.0.1   localhost
+::1         localhost
+127.0.1.1   $HOSTNAME.localdomain $HOSTNAME
 EOL
 
-# Configure mkinitcpio for LUKS and Btrfs
-# Ensure encrypt and btrfs hooks are present, without hardcoding the entire line
-if ! grep -q "HOOKS=.*encrypt" /etc/mkinitcpio.conf; then
-    sed -i '/^HOOKS=/ s/\(filesystems\)/\1 encrypt/' /etc/mkinitcpio.conf
-fi
-if ! grep -q "HOOKS=.*btrfs" /etc/mkinitcpio.conf; then
-    sed -i '/^HOOKS=/ s/\(filesystems\)/\1 btrfs/' /etc/mkinitcpio.conf
-fi
-# Ensure kms is removed if present and not explicitly desired for minimal setup
-sed -i 's/\<kms\>//g' /etc/mkinitcpio.conf # Remove kms hook if present
+# === ROBUST MKINITCPIO HOOKS CONFIGURATION ===
+echo "[INFO] Configuring mkinitcpio with encrypt and btrfs hooks..."
+sed -i -E "s/^HOOKS=\(.*\)/HOOKS=(base udev autodetect modconf keyboard keymap consolefont block encrypt btrfs filesystems fsck)/" /etc/mkinitcpio.conf
 mkinitcpio -P
-# IMPORTANT: The sbctl mkinitcpio hook will warn "Secureboot key directory doesn't exist, not signing!"
-# during pacstrap's post-transaction phase because keys are created later in this chroot block.
-# This is expected and harmless for the initial install. The kernel and bootloader will be
-# manually signed below after key creation.
 
 # Install and configure systemd-boot
-# The D-Bus error from bootctl install is common in chroot environments as D-Bus might not be fully active.
-# It's usually benign if the bootloader files are created successfully.
 bootctl --path=/boot/efi install
-
-# Set strict permissions on the random-seed file created by bootctl
-chmod 0600 /boot/efi/loader/random-seed
-
-# Use the LUKS_UUID passed from the outer script
-# This is more reliable than re-deriving it inside chroot
-LUKS_UUID_CHROOT="$LUKS_UUID"
-
 
 # Create systemd-boot entry
 mkdir -p /boot/efi/loader/entries
@@ -377,72 +321,46 @@ console-mode keep
 editor no
 EOL
 
-# Determine ucode image based on installed package
+# === ROBUST MICROCODE DETECTION (with syntax fix) ===
 UCODE_IMG=""
-if pacman -Qq intel-ucode &>/dev/null; then
+if grep -q "GenuineIntel" /proc/cpuinfo && pacman -Qq intel-ucode &>/dev/null; then
     UCODE_IMG="initrd /intel-ucode.img"
-elif pacman -Qq amd-ucode &>/dev/null; then
+elif grep -q "AuthenticAMD" /proc/cpuinfo && pacman -Qq amd-ucode &>/dev/null; then
     UCODE_IMG="initrd /amd-ucode.img"
 fi
 
-
+# === CORRECTED LUKS UUID USAGE ===
 cat > /boot/efi/loader/entries/arch.conf <<EOL
 title Arch Linux
 linux /vmlinuz-$KERNEL
 $UCODE_IMG
 initrd /initramfs-$KERNEL.img
-options cryptdevice=UUID=\$LUKS_UUID_CHROOT:cryptroot root=/dev/mapper/cryptroot rootflags=subvol=@ rw
+options cryptdevice=UUID=$LUKS_UUID:cryptroot root=/dev/mapper/cryptroot rootflags=subvol=@ rw
 EOL
 
 # Configure snapper
 snapper -c root create-config /
 chmod 750 /.snapshots
-
-# Configure snapper settings
-cat > /etc/snapper/configs/root <<EOL
-SUBVOLUME="/"
-FSTYPE="btrfs"
-QGROUP=""
-SPACE_LIMIT="0.5"
-FREE_LIMIT="0.2"
-ALLOW_USERS=""
-ALLOW_GROUPS=""
-SYNC_ACL="no"
-BACKGROUND_COMPARISON="yes"
-NUMBER_CLEANUP="yes"
-NUMBER_MIN_AGE="1800"
-NUMBER_LIMIT="50"
-NUMBER_LIMIT_IMPORTANT="10"
-TIMELINE_CREATE="yes"
-TIMELINE_CLEANUP="yes"
-TIMELINE_MIN_AGE="1800"
-TIMELINE_LIMIT_HOURLY="10"
-TIMELINE_LIMIT_DAILY="10"
-TIMELINE_LIMIT_WEEKLY="0"
-TIMELINE_LIMIT_MONTHLY="10"
-TIMELINE_LIMIT_YEARLY="10"
-EOL
+# Snapper config can be customized here if needed
 
 # Enable services
-systemctl enable systemd-networkd
-systemctl enable systemd-resolved
-systemctl enable NetworkManager # Enable NetworkManager
+systemctl enable NetworkManager
 systemctl enable snapper-timeline.timer
 systemctl enable snapper-cleanup.timer
 
 # Create user
-useradd -m -G wheel -s /bin/bash "$USERNAME" # Use quotes for variable
+useradd -m -G wheel -s /bin/bash "$USERNAME"
 
 # Set user password
 echo "Set password for user '$USERNAME':"
 while true; do
-    passwd "$USERNAME" && break # Use quotes for variable
+    passwd "$USERNAME" && break
     echo "Password setting failed. Please try again."
 done
 
 # Configure sudo
 echo "%wheel ALL=(ALL) ALL" > /etc/sudoers.d/wheel
-chmod 0440 /etc/sudoers.d/wheel # Set correct permissions for sudoers file
+chmod 0440 /etc/sudoers.d/wheel
 
 # Set root password
 echo "Set password for root user:"
@@ -451,21 +369,26 @@ while true; do
     echo "Password setting failed. Please try again."
 done
 
-# Setup secure boot
-echo "Setting up secure boot..."
-sbctl create-keys
-sbctl enroll-keys -m
+# === SECURE BOOT SETUP WITH ERROR HANDLING ===
+echo "[INFO] Setting up secure boot..."
+sbctl create-keys || echo "[ERROR] Failed to create Secure Boot keys. Is Secure Boot disabled in UEFI?" >&2
+sbctl enroll-keys -m || echo "[ERROR] Failed to enroll keys. Ensure Secure Boot is enabled and in 'Setup Mode' in UEFI firmware." >&2
 
-# Sign kernel and bootloader
-sbctl sign -s /boot/efi/EFI/systemd/systemd-bootx64.efi
-sbctl sign -s /boot/efi/EFI/BOOT/BOOTX64.EFI
-sbctl sign -s /boot/vmlinuz-$KERNEL
-sbctl sign -s /boot/initramfs-$KERNEL.img
-sbctl sign -s /boot/initramfs-$KERNEL-fallback.img # Sign fallback initramfs
+echo "[INFO] Signing boot files..."
+sbctl sign -s /boot/efi/EFI/systemd/systemd-bootx64.efi || echo "[WARN] Could not sign systemd-bootx64.efi" >&2
+sbctl sign -s /boot/efi/EFI/BOOT/BOOTX64.EFI || echo "[WARN] Could not sign BOOTX64.EFI" >&2
+sbctl sign -s /boot/vmlinuz-$KERNEL || echo "[WARN] Could not sign the kernel" >&2
+sbctl sign -s /boot/initramfs-$KERNEL.img || echo "[WARN] Could not sign the initramfs" >&2
 
-# Create pacman hook for automatic signing
+# Only sign fallback if it exists
+if [[ -f "/boot/initramfs-$KERNEL-fallback.img" ]]; then
+    sbctl sign -s "/boot/initramfs-$KERNEL-fallback.img" || echo "[WARN] Could not sign the fallback initramfs" >&2
+fi
+
+# === ROBUST PACMAN HOOK FOR SECURE BOOT (with fix) ===
+# This hook ensures the kernel, initramfs, and fallback initramfs are all signed on update.
 mkdir -p /etc/pacman.d/hooks
-cat > /etc/pacman.d/hooks/999-sign_kernel_for_secureboot.hook <<EOL
+cat > /etc/pacman.d/hooks/999-sign_kernel_for_secureboot.hook <<'HOOK'
 [Trigger]
 Operation = Install
 Operation = Upgrade
@@ -475,29 +398,13 @@ Target = linux-lts
 Target = linux-zen
 
 [Action]
-Description = Signing kernel with Machine Owner Key for Secure Boot
+Description = Signing kernel and initramfs for Secure Boot
 When = PostTransaction
-Exec = /usr/bin/sbctl sign -s /boot/vmlinuz-%PKGBASE% -s /boot/initramfs-%PKGBASE%.img -s /boot/initramfs-%PKGBASE%-fallback.img
+Exec = /bin/bash -c 'sbctl sign -s /boot/vmlinuz-%PKGBASE% && sbctl sign -s /boot/initramfs-%PKGBASE%.img && [[ -f /boot/initramfs-%PKGBASE%-fallback.img ]] && sbctl sign -s /boot/initramfs-%PKGBASE%-fallback.img || true'
 Depends = sbctl
-EOL
-# Ensure the hook is executable (though pacman hooks don't strictly need it, good practice)
-chmod +x /etc/pacman.d/hooks/999-sign_kernel_for_secureboot.hook
+HOOK
 
-
-# Create systemd-boot update hook
-cat > /etc/pacman.d/hooks/100-systemd-boot.hook <<EOL
-[Trigger]
-Type = Package
-Operation = Upgrade
-Target = systemd
-
-[Action]
-Description = Gracefully upgrading systemd-boot...
-When = PostTransaction
-Exec = /usr/bin/systemctl restart systemd-boot-update.service
-EOL
-
-echo "Secure boot setup complete"
+echo "Secure boot setup complete. Check for warnings above."
 echo "Signed files:"
 sbctl list-files
 
@@ -506,32 +413,12 @@ EOF
 # Create post-install script
 cat > /mnt/home/$USERNAME/post-install.sh <<'EOF'
 #!/bin/bash
-
 # Post-installation script for additional configuration
-
-log() {
-    echo -e "\033[0;32m[INFO]\033[0m $1"
-}
-
-log "Running post-installation configuration..."
-
-# Create initial snapshot
+echo -e "\033[0;32m[INFO]\033[0m Running post-installation configuration..."
 sudo snapper -c root create --description "Initial snapshot after installation"
-
-log "Post-installation configuration complete!"
-log "System is ready for use with secure boot enabled."
-log "Available snapshots:"
-sudo snapper -c root list
-
-log "Network configuration needed:"
-log "If you rely on Wi-Fi or more complex network setups, consider running:"
-log "sudo systemctl enable --now NetworkManager"
-log "sudo systemctl disable --now systemd-networkd systemd-resolved"
-log "Then reboot."
-log "For wired connections, you might need to create configuration files in /etc/systemd/network/"
-log "Example: /etc/systemd/network/20-wired.network"
+echo -e "\033[0;32m[INFO]\033[0m Post-installation configuration complete!"
+echo -e "\033[0;32m[INFO]\033[0m System is ready for use."
 EOF
-
 chmod +x /mnt/home/$USERNAME/post-install.sh
 
 # Unmount filesystems
@@ -541,24 +428,21 @@ umount -R /mnt
 cryptsetup close cryptroot
 
 log "Installation complete!"
-log "System is configured with:"
 log "- LUKS encryption on ${LUKS_PART}"
 log "- Separate boot partition on ${BOOT_PART}"
 log "- Btrfs with compression and subvolumes"
 log "- Snapper for snapshots"
 log "- Systemd-boot with secure boot support"
-log "- Automatic kernel signing for secure boot"
 log "- $KERNEL kernel"
 log ""
 log "After reboot:"
 log "1. Boot into the new system"
-log "2. Configure network (NetworkManager is installed, but you may need to enable/disable systemd-networkd)"
-log "3. Run the post-install script in your home directory: /home/$USERNAME/post-install.sh"
-log "4. Verify secure boot status with: bootctl status"
-log "5. Check signed files with: sudo sbctl list-files"
+log "2. Run the post-install script: /home/$USERNAME/post-install.sh"
+log "3. Verify secure boot status with: bootctl status"
+log "4. Check signed files with: sudo sbctl list-files"
 log ""
 warn "Make sure to backup your LUKS passphrase!"
-warn "The system will automatically sign kernels on updates."
+warn "The system will automatically sign kernels and initramfs on updates."
 
 echo "Press Enter to reboot..."
 read
