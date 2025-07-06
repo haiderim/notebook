@@ -282,11 +282,13 @@ mkdir -p /mnt/boot # Ensure /mnt/boot exists
 mount "$BOOT_PART" /mnt/boot
 mkdir -p /mnt/boot/efi # Create /mnt/boot/efi AFTER /mnt/boot is mounted
 mount "$ESP_PART" /mnt/boot/efi
+chmod 0700 /mnt/boot/efi # Set strict permissions on ESP
 
 # Install base system
 confirm_action "Installing base system packages"
 log "Installing base system and essential packages..."
-pacstrap /mnt base base-devel "$KERNEL" linux-firmware intel-ucode btrfs-progs snapper \
+# Use echo 1 | for interactive prompts from pacstrap
+echo 1 | pacstrap /mnt base base-devel "$KERNEL" linux-firmware intel-ucode btrfs-progs snapper \
     vim nano sudo cryptsetup sbctl efibootmgr networkmanager
 
 # Generate fstab
@@ -338,6 +340,8 @@ sed -i 's/\<kms\>//g' /etc/mkinitcpio.conf # Remove kms hook if present
 mkinitcpio -P
 
 # Install and configure systemd-boot
+# The D-Bus error from bootctl install is often benign in chroot if files are created.
+# Permissions are set in the outer script.
 bootctl --path=/boot/efi install
 
 # Use the LUKS_UUID passed from the outer script
@@ -531,9 +535,9 @@ log "After reboot:"
 log "1. Boot into the new system"
 log "2. Configure network (NetworkManager is installed, but you may need to enable/disable systemd-networkd)"
 log "3. Run the post-install script in your home directory: /home/$USERNAME/post-install.sh"
-log "4. Verify secure boot status with: bootctl status"
-log "5. Check signed files with: sudo sbctl list-files"
-log ""
+4. Verify secure boot status with: bootctl status
+5. Check signed files with: sudo sbctl list-files
+""
 warn "Make sure to backup your LUKS passphrase!"
 warn "The system will automatically sign kernels on updates."
 
